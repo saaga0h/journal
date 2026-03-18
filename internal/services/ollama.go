@@ -8,15 +8,23 @@ import (
 	"net/http"
 	"time"
 
+	"strings"
+
 	"github.com/saaga0h/journal/internal/config"
 	"github.com/sirupsen/logrus"
 )
 
-// Ollama is a client for the Ollama embedding API.
+// Ollama is a client for the Ollama embedding and chat APIs.
 type Ollama struct {
 	config config.OllamaConfig
 	client *http.Client
 	logger *logrus.Logger
+}
+
+// ChatMessage represents a single message in a chat conversation.
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 type embedRequest struct {
@@ -26,6 +34,21 @@ type embedRequest struct {
 
 type embedResponse struct {
 	Embeddings [][]float32 `json:"embeddings"`
+}
+
+type chatRequest struct {
+	Model    string        `json:"model"`
+	Messages []ChatMessage `json:"messages"`
+	Stream   bool          `json:"stream"`
+	Options  chatOptions   `json:"options"`
+}
+
+type chatOptions struct {
+	NumCtx int `json:"num_ctx"`
+}
+
+type chatResponse struct {
+	Message ChatMessage `json:"message"`
 }
 
 // NewOllama creates a new Ollama client.
@@ -96,4 +119,65 @@ func (o *Ollama) Embed(text string) ([]float32, error) {
 	}).Debug("Computed embedding")
 
 	return embedding, nil
+}
+
+// Chat sends a chat completion request to Ollama and returns the response content.
+func (o *Ollama) Chat(messages []ChatMessage, model string, numCtx int) (string, error) {
+	reqBody := chatRequest{
+		Model:    model,
+		Messages: messages,
+		Stream:   false,
+		Options:  chatOptions{NumCtx: numCtx},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal chat request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", o.config.BaseURL+"/api/chat", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create chat request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("chat request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("chat returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read chat response: %w", err)
+	}
+
+	var chatResp chatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("failed to parse chat response: %w\nraw: %s", err, string(body))
+	}
+
+	content := strings.TrimSpace(chatResp.Message.Content)
+
+	o.logger.WithFields(logrus.Fields{
+		"model":      model,
+		"num_ctx":    numCtx,
+		"output_len": len(content),
+	}).Debug("Chat completion")
+
+	return content, nil
+}
+
+// stripMarkdownFences removes markdown code fences from a string.
+func StripMarkdownFences(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
 }

@@ -50,6 +50,8 @@ type MQTTConfig struct {
 type OllamaConfig struct {
 	BaseURL    string `json:"base_url"`
 	EmbedModel string `json:"embed_model"`
+	ChatModel  string `json:"chat_model"`
+	ChatNumCtx int    `json:"chat_num_ctx"`
 	Timeout    int    `json:"timeout"`
 }
 
@@ -88,6 +90,8 @@ func Load(configPath string) (*Config, error) {
 		Ollama: OllamaConfig{
 			BaseURL:    getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
 			EmbedModel: getEnv("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
+			ChatModel:  getEnv("OLLAMA_CHAT_MODEL", "qwen2.5:7b"),
+			ChatNumCtx: getEnvInt("OLLAMA_CHAT_NUM_CTX", 32768),
 			Timeout:    getEnvInt("OLLAMA_TIMEOUT", 60),
 		},
 	}

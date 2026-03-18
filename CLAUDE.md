@@ -17,7 +17,7 @@ make mqtt-sub       # Watch all journal MQTT topics
 
 - Independent Go binaries communicating via MQTT (Eclipse Paho, QoS 1)
 - Postgres 16 + pgvector for persistence and vector similarity
-- Ollama (nomic-embed-text) for embedding computation
+- Ollama (nomic-embed-text for embeddings, configurable chat model for extraction)
 - Config via environment variables + godotenv
 - Structured logging via logrus (JSON format)
 
@@ -43,3 +43,6 @@ Ports are offset from defaults to avoid conflicts with Minerva:
 - **Ollama mutex** — serialize embedding calls in long-running services. Concurrent requests cause timeouts. One embedding at a time.
 - **Paho payload copy** — MQTT handlers must copy `payload` before spawning goroutines (`data := make([]byte, len(payload)); copy(data, payload)`). Paho reuses the buffer.
 - **Association threshold** — `ASSOCIATION_THRESHOLD` env var (default 0.3). With nomic-embed-text, unrelated texts ~0.1-0.3, related ~0.4-0.8. May need tuning with real data.
+- **Ollama chat endpoint is `/api/chat`** (not `/api/generate`). Request uses `messages` array with `{role, content}` objects.
+- **Chat model config** — `OLLAMA_CHAT_MODEL` (default `qwen2.5:7b`) and `OLLAMA_CHAT_NUM_CTX` (default `32768`) control concept extraction. Chat timeout shares `OLLAMA_TIMEOUT`.
+- **Concept extractor** — `cmd/concept-extract` is a one-shot CLI like `ingest-standing`. Use `make extract REPO=<path> DAYS=7`. The `--deep` flag is recommended for meaningful embeddings (produces theoretical territory).

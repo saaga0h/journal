@@ -9,7 +9,8 @@ MQTT_BROKER ?= tcp://localhost:1884
 .PHONY: help deps build-primitives build-dev test fmt clean \
         setup-dev infra infra-down migrate psql mqtt-sub \
         run-ingest-standing ingest-all-standing list-standing \
-        run-entry-ingest run-reembed list-entries list-associations
+        run-entry-ingest run-reembed list-entries list-associations \
+        run-concept-extract extract
 
 # Default target
 help: ## Show this help message
@@ -30,6 +31,7 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
 	go build -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -o $(BUILD_DIR)/reembed ./cmd/reembed/
+	go build -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
@@ -39,6 +41,7 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/reembed ./cmd/reembed/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
 	@echo "Done."
 
 # Tests
@@ -132,6 +135,14 @@ list-associations: ## List entry-standing associations
 		 FROM entry_standing_associations esa \
 		 JOIN journal_entries je ON je.id = esa.entry_id \
 		 ORDER BY je.created_at DESC, esa.similarity DESC LIMIT 30;"
+
+# ── Concept extractor ────────────────────────────────────────────────────────
+
+run-concept-extract: build-primitives ## Run concept extraction (REPO=path DAYS=1)
+	$(BUILD_DIR)/concept-extract --repo $(REPO) --days $(or $(DAYS),1) --config .env.dev
+
+extract: build-primitives ## Extract concepts from a repo (REPO=path DAYS=7)
+	$(BUILD_DIR)/concept-extract --repo $(REPO) --days $(or $(DAYS),1) --deep --config .env.dev
 
 # CI simulation
 ci: deps fmt test build-primitives ## Full CI pipeline
