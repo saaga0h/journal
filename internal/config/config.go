@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	App      AppConfig      `json:"app"`
-	Log      LogConfig      `json:"log"`
-	Database DatabaseConfig `json:"database"`
-	MQTT     MQTTConfig     `json:"mqtt"`
-	Ollama   OllamaConfig   `json:"ollama"`
+	App                  AppConfig      `json:"app"`
+	Log                  LogConfig      `json:"log"`
+	Database             DatabaseConfig `json:"database"`
+	MQTT                 MQTTConfig     `json:"mqtt"`
+	Ollama               OllamaConfig   `json:"ollama"`
+	AssociationThreshold float64        `json:"association_threshold"`
 }
 
 type AppConfig struct {
@@ -90,6 +91,8 @@ func Load(configPath string) (*Config, error) {
 			Timeout:    getEnvInt("OLLAMA_TIMEOUT", 60),
 		},
 	}
+
+	config.AssociationThreshold = getEnvFloat("ASSOCIATION_THRESHOLD", 0.3)
 
 	return config, nil
 }

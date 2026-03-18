@@ -7,7 +7,9 @@ BUILD_DIR := ./build
 MQTT_BROKER ?= tcp://localhost:1884
 
 .PHONY: help deps build-primitives build-dev test fmt clean \
-        setup-dev infra infra-down migrate psql mqtt-sub
+        setup-dev infra infra-down migrate psql mqtt-sub \
+        run-ingest-standing ingest-all-standing list-standing \
+        run-entry-ingest run-reembed list-entries list-associations
 
 # Default target
 help: ## Show this help message
@@ -25,12 +27,18 @@ deps: ## Install Go dependencies
 build-primitives: ## Build all primitive binaries
 	@echo "Building primitives..."
 	@mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
+	go build -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
+	go build -o $(BUILD_DIR)/reembed ./cmd/reembed/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
 build-dev: ## Build all primitives with debug symbols
 	@echo "Building primitives for development..."
 	@mkdir -p $(BUILD_DIR)
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/reembed ./cmd/reembed/
 	@echo "Done."
 
 # Tests
@@ -82,6 +90,48 @@ mqtt-sub: ## Watch all journal MQTT topics
 
 # Quick development workflow
 quick-test: fmt test ## Format and test
+
+# ── Standing document targets ─────────────────────────────────────────────────
+
+run-ingest-standing: build-primitives ## Ingest a standing document (FILE=path/to/doc.md)
+	$(BUILD_DIR)/ingest-standing --file $(FILE) --config .env.dev
+
+ingest-all-standing: build-primitives ## Ingest all standing documents from standing-documents/
+	@for f in standing-documents/*.md; do \
+		echo "Ingesting $$f..."; \
+		$(BUILD_DIR)/ingest-standing --file "$$f" --config .env.dev; \
+	done
+
+list-standing: ## List current standing documents in the database
+	@docker exec journal_postgres psql -U journal -d journal -c \
+		"SELECT slug, title, version, created_at, \
+		 CASE WHEN embedding IS NOT NULL THEN 'yes' ELSE 'no' END as has_embedding \
+		 FROM standing_documents sd1 \
+		 WHERE version = (SELECT MAX(version) FROM standing_documents sd2 WHERE sd2.slug = sd1.slug) \
+		 ORDER BY slug;"
+
+# ── Entry targets ────────────────────────────────────────────────────────────
+
+run-entry-ingest: build-primitives ## Run entry ingestion service
+	$(BUILD_DIR)/entry-ingest -config .env.dev
+
+run-reembed: build-primitives ## Re-embed entries with null embeddings
+	$(BUILD_DIR)/reembed -config .env.dev
+
+list-entries: ## List recent journal entries
+	@docker exec journal_postgres psql -U journal -d journal -c \
+		"SELECT id, repository, LEFT(summary, 60) as summary, \
+		 CASE WHEN embedding IS NOT NULL THEN 'yes' ELSE 'no' END as embedded, \
+		 created_at \
+		 FROM journal_entries ORDER BY created_at DESC LIMIT 20;"
+
+list-associations: ## List entry-standing associations
+	@docker exec journal_postgres psql -U journal -d journal -c \
+		"SELECT je.id, je.repository, LEFT(je.summary, 40) as summary, \
+		 esa.standing_slug, round(esa.similarity::numeric, 3) as similarity \
+		 FROM entry_standing_associations esa \
+		 JOIN journal_entries je ON je.id = esa.entry_id \
+		 ORDER BY je.created_at DESC, esa.similarity DESC LIMIT 30;"
 
 # CI simulation
 ci: deps fmt test build-primitives ## Full CI pipeline
