@@ -28,23 +28,10 @@ services:
     networks:
       - journal_network
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: journal_ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    profiles: ["dev"]
-    networks:
-      - journal_network
-
 volumes:
   journal_postgres_data:
     driver: local
   mosquitto_data:
-    driver: local
-  ollama_data:
     driver: local
 
 networks:
