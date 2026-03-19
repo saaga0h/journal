@@ -204,6 +204,19 @@ func GetEntriesWithoutEmbedding(pool *pgxpool.Pool) ([]JournalEntry, error) {
 	return scanEntries(rows)
 }
 
+// DeleteEntryStandingAssociations removes all standing associations for a given entry.
+func DeleteEntryStandingAssociations(pool *pgxpool.Pool, entryID int64) error {
+	ctx := context.Background()
+	_, err := pool.Exec(ctx,
+		"DELETE FROM entry_standing_associations WHERE entry_id = $1",
+		entryID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete associations for entry %d: %w", entryID, err)
+	}
+	return nil
+}
+
 // InsertEntryStandingAssociation records a similarity between an entry and a standing document.
 func InsertEntryStandingAssociation(pool *pgxpool.Pool, entryID int64, standingSlug string, similarity float32) error {
 	ctx := context.Background()

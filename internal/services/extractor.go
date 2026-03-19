@@ -55,6 +55,65 @@ Required JSON structure:
 
 arxiv_search_terms must use researcher vocabulary, not engineer vocabulary. Prefer mathematical and theoretical formulations.`
 
+// GetCommitDays returns the unique calendar dates (UTC) on which commits exist
+// within the given time range. Used to enumerate active days for per-day extraction.
+func GetCommitDays(repoPath string, since time.Time, until time.Time) ([]time.Time, error) {
+	sinceStr := since.Format(gitTimeFormat)
+	args := []string{"-C", repoPath, "log",
+		fmt.Sprintf("--since=%s", sinceStr),
+		"--no-color",
+		"--pretty=format:%cd",
+		"--date=format:%Y-%m-%d",
+	}
+	if !until.IsZero() {
+		args = append(args, fmt.Sprintf("--before=%s", until.Format(gitTimeFormat)))
+	}
+	cmd := exec.Command("git", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log (days) failed: %w", err)
+	}
+
+	seen := make(map[string]bool)
+	var days []time.Time
+	for _, line := range splitLines(string(out)) {
+		if line == "" || seen[line] {
+			continue
+		}
+		seen[line] = true
+		t, err := time.ParseInLocation("2006-01-02", line, time.UTC)
+		if err != nil {
+			continue
+		}
+		days = append(days, t)
+	}
+
+	// Sort ascending so we process oldest day first
+	for i := 0; i < len(days); i++ {
+		for j := i + 1; j < len(days); j++ {
+			if days[j].Before(days[i]) {
+				days[i], days[j] = days[j], days[i]
+			}
+		}
+	}
+	return days, nil
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
+
 // GetCommitMessages returns all commit messages in the time range, oldest first.
 // If until is non-zero, only commits before that time are included.
 func GetCommitMessages(repoPath string, since time.Time, until time.Time) (string, error) {
