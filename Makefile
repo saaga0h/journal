@@ -9,7 +9,7 @@ MQTT_BROKER ?= tcp://localhost:1884
 .PHONY: help deps build-primitives build-dev test fmt clean \
         setup-dev infra infra-down migrate psql mqtt-sub \
         run-ingest-standing ingest-all-standing list-standing \
-        run-entry-ingest run-reembed list-entries list-associations \
+        run-entry-ingest run-reembed run-reassociate list-entries list-associations \
         run-concept-extract extract
 
 # Default target
@@ -31,6 +31,7 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
 	go build -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -o $(BUILD_DIR)/reembed ./cmd/reembed/
+	go build -o $(BUILD_DIR)/reassociate ./cmd/reassociate/
 	go build -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
 	go build -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
 	go build -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
@@ -44,6 +45,7 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-standing ./cmd/ingest-standing/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/reembed ./cmd/reembed/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/reassociate ./cmd/reassociate/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
@@ -126,6 +128,9 @@ run-entry-ingest: build-primitives ## Run entry ingestion service
 
 run-reembed: build-primitives ## Re-embed entries with null embeddings
 	$(BUILD_DIR)/reembed -config .env.dev
+
+run-reassociate: build-primitives ## Recompute all entry-standing associations against current standing docs
+	$(BUILD_DIR)/reassociate -config .env.dev
 
 list-entries: ## List recent journal entries
 	@docker exec journal_postgres psql -U journal -d journal -c \
