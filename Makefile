@@ -140,7 +140,7 @@ list-associations: ## List entry-standing associations
 		 esa.standing_slug, round(esa.similarity::numeric, 3) as similarity \
 		 FROM entry_standing_associations esa \
 		 JOIN journal_entries je ON je.id = esa.entry_id \
-		 ORDER BY je.created_at DESC, esa.similarity DESC LIMIT 30;"
+		 ORDER BY je.created_at DESC, esa.similarity DESC LIMIT 100;"
 
 # ── Concept extractor ────────────────────────────────────────────────────────
 
