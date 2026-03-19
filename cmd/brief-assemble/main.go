@@ -158,40 +158,32 @@ func main() {
 
 			log.WithField("session_id", sessionID).Info("Brief trigger received — computing trend")
 
-			// Compute trend
-			entries, err := database.GetRecentEntriesWithEmbeddings(pool, *windowDays)
+			// Compute standing-space gravity profile
+			points, err := database.GetRecentEntriesInStandingSpace(pool, *windowDays)
 			if err != nil {
-				log.WithError(err).Error("Failed to fetch entries for trend")
+				log.WithError(err).Error("Failed to fetch entries in standing space")
 				publishSilence(client, log, sessionID, triggerTime, "trend_error")
 				return
 			}
 
-			if len(entries) < 3 {
-				log.WithField("entry_count", len(entries)).Info("Brief: silence — insufficient trend data")
+			if len(points) < 3 {
+				log.WithField("entry_count", len(points)).Info("Brief: silence — insufficient trend data")
 				publishSilence(client, log, sessionID, triggerTime, "insufficient_trend_data")
 				return
 			}
 
-			now := time.Now()
-			embeddings := make([][]float32, 0, len(entries))
-			weights := make([]float64, 0, len(entries))
-			for _, e := range entries {
-				raw := e.Embedding.Slice()
-				if len(raw) == 0 {
-					continue
+			slugSet := make(map[string]bool)
+			for _, pt := range points {
+				for slug := range pt.Coords {
+					slugSet[slug] = true
 				}
-				ageDays := now.Sub(e.SinceTimestamp).Hours() / 24.0
-				w := services.GLFWeight(ageDays, 0.3, 14.0)
-				embeddings = append(embeddings, raw)
-				weights = append(weights, w)
+			}
+			allSlugs := make([]string, 0, len(slugSet))
+			for s := range slugSet {
+				allSlugs = append(allSlugs, s)
 			}
 
-			centroid, err := services.WeightedCentroid(embeddings, weights)
-			if err != nil {
-				log.WithError(err).Error("Failed to compute trend centroid")
-				publishSilence(client, log, sessionID, triggerTime, "trend_error")
-				return
-			}
+			gravity := services.GLFWeightedGravityProfile(points, allSlugs, 0.3, 14.0)
 
 			// Track session for timeout handling
 			mu.Lock()
@@ -200,15 +192,15 @@ func main() {
 
 			// Publish Minerva query
 			query := struct {
-				SessionID     string    `json:"session_id"`
-				QueryVector   []float32 `json:"query_vector"`
-				TopK          int       `json:"top_k"`
-				ResponseTopic string    `json:"response_topic"`
+				SessionID      string             `json:"session_id"`
+				GravityProfile map[string]float32 `json:"gravity_profile"`
+				TopK           int                `json:"top_k"`
+				ResponseTopic  string             `json:"response_topic"`
 			}{
-				SessionID:     sessionID,
-				QueryVector:   centroid,
-				TopK:          5,
-				ResponseTopic: mqttclient.TopicMinervaResponse,
+				SessionID:      sessionID,
+				GravityProfile: map[string]float32(gravity),
+				TopK:           5,
+				ResponseTopic:  mqttclient.TopicMinervaResponse,
 			}
 
 			if err := client.Publish(mqttclient.TopicMinervaQuery, query); err != nil {

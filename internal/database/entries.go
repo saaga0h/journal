@@ -36,6 +36,16 @@ type EntryStandingAssociation struct {
 	Similarity   float32
 }
 
+// EntrySpacePoint represents a journal entry positioned in standing-document space.
+// Coords maps standing_slug -> similarity score. No raw embedding needed.
+type EntrySpacePoint struct {
+	EntryID        int64
+	Repository     string
+	SinceTimestamp time.Time
+	CreatedAt      time.Time
+	Coords         map[string]float32 // slug -> similarity score
+}
+
 // ListEntriesOpts controls filtering for ListEntries queries.
 type ListEntriesOpts struct {
 	Repository string
@@ -321,6 +331,67 @@ func GetRecentlyActivatedStandingSlugs(pool *pgxpool.Pool, days int) ([]string, 
 		slugs = append(slugs, slug)
 	}
 	return slugs, rows.Err()
+}
+
+// GetRecentEntriesInStandingSpace returns entries within the lookback window as points
+// in standing-document space. Each point carries a map of standing_slug -> similarity.
+// Uses created_at for recency (same semantics as GetRecentEntriesWithEmbeddings).
+func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]EntrySpacePoint, error) {
+	ctx := context.Background()
+	since := time.Now().AddDate(0, 0, -windowDays)
+
+	rows, err := pool.Query(ctx,
+		`SELECT je.id, je.repository, je.since_timestamp, je.created_at,
+		        esa.standing_slug, esa.similarity
+		 FROM journal_entries je
+		 JOIN entry_standing_associations esa ON esa.entry_id = je.id
+		 WHERE je.created_at >= $1
+		 ORDER BY je.id, esa.standing_slug`,
+		since,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get entries in standing space: %w", err)
+	}
+	defer rows.Close()
+
+	pointMap := make(map[int64]*EntrySpacePoint)
+	var order []int64
+
+	for rows.Next() {
+		var entryID int64
+		var repo string
+		var sinceTS, createdAt time.Time
+		var slug string
+		var sim float32
+
+		if err := rows.Scan(&entryID, &repo, &sinceTS, &createdAt, &slug, &sim); err != nil {
+			return nil, fmt.Errorf("failed to scan entry space point: %w", err)
+		}
+
+		pt, exists := pointMap[entryID]
+		if !exists {
+			pt = &EntrySpacePoint{
+				EntryID:        entryID,
+				Repository:     repo,
+				SinceTimestamp: sinceTS,
+				CreatedAt:      createdAt,
+				Coords:         make(map[string]float32),
+			}
+			pointMap[entryID] = pt
+			order = append(order, entryID)
+		}
+		pt.Coords[slug] = sim
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	points := make([]EntrySpacePoint, 0, len(order))
+	for _, id := range order {
+		points = append(points, *pointMap[id])
+	}
+	return points, nil
 }
 
 func scanEntries(rows pgx.Rows) ([]JournalEntry, error) {

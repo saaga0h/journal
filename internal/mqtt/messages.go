@@ -46,18 +46,21 @@ type ConceptCreated struct {
 	Project string `json:"project"`
 }
 
-// TrendResult is published by trend-detect after computing the current trend centroid.
+// TrendResult is published by trend-detect after computing the gravity profile
+// in standing-document space.
 type TrendResult struct {
 	Envelope
-	TrendVector []float32       `json:"trend_vector"`
-	EntryCount  int             `json:"entry_count"`
-	WindowDays  int             `json:"window_days"`
-	Exceptions  []TrendException `json:"exceptions,omitempty"`
-	ComputedAt  time.Time       `json:"computed_at"`
+	GravityProfile map[string]float32 `json:"gravity_profile"` // slug -> weighted mean similarity
+	SoulSpeed      float32            `json:"soul_speed"`       // Soul Speed axis score
+	ClusterSpread  float32            `json:"cluster_spread"`   // tightness of the cluster
+	EntryCount     int                `json:"entry_count"`
+	WindowDays     int                `json:"window_days"`
+	ComputedAt     time.Time          `json:"computed_at"`
+	HumanSummary   string             `json:"human_summary"` // pre-rendered readable description
 }
 
-// TrendException captures a candidate phase-transition signal: an entry distant from
-// the current trend centroid but close to a standing document not recently activated.
+// TrendException captures a candidate phase-transition signal.
+// Retained for future use but not currently included in TrendResult.
 type TrendException struct {
 	EntryID               int64   `json:"entry_id,omitempty"`
 	ActivatedStandingSlug string  `json:"activated_standing_slug"`

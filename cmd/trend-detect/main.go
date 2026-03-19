@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"math"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -17,12 +17,11 @@ import (
 )
 
 func main() {
-	windowDays        := flag.Int("window-days", 28, "lookback window in days")
-	glfK              := flag.Float64("glf-k", 0.3, "GLF steepness parameter")
-	glfMidpointDays   := flag.Int("glf-midpoint-days", 14, "age in days where GLF weight = 0.5")
-	exceptionThreshold := flag.Float64("exception-threshold", 0.5, "minimum cosine distance from centroid to flag an exception")
-	publish           := flag.Bool("publish", true, "publish TrendResult to MQTT (false = print JSON to stdout)")
-	configPath        := flag.String("config", "", "path to .env configuration file")
+	windowDays      := flag.Int("window-days", 28, "lookback window in days")
+	glfK            := flag.Float64("glf-k", 0.3, "GLF steepness parameter")
+	glfMidpointDays := flag.Int("glf-midpoint-days", 14, "age in days where GLF weight = 0.5")
+	publish         := flag.Bool("publish", true, "publish TrendResult to MQTT (false = print to stdout)")
+	configPath      := flag.String("config", "", "path to .env configuration file")
 	flag.Parse()
 
 	log := logger.New()
@@ -47,85 +46,36 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Fetch recent entries with embeddings
-	entries, err := database.GetRecentEntriesWithEmbeddings(pool, *windowDays)
+	// Fetch entries as points in standing-doc space
+	points, err := database.GetRecentEntriesInStandingSpace(pool, *windowDays)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to fetch recent entries")
+		log.WithError(err).Fatal("Failed to fetch entries in standing space")
 	}
 
-	if len(entries) < 3 {
-		log.WithField("entry_count", len(entries)).Info("Insufficient data for trend detection — need at least 3 entries")
+	if len(points) < 3 {
+		log.WithField("entry_count", len(points)).Info("Insufficient data for trend detection — need at least 3 entries with associations")
 		os.Exit(0)
 	}
 
-	// Build GLF-weighted embeddings
-	now := time.Now()
-	embeddings := make([][]float32, 0, len(entries))
-	weights := make([]float64, 0, len(entries))
-
-	for _, e := range entries {
-		raw := e.Embedding.Slice()
-		if len(raw) == 0 {
-			continue
-		}
-		ageDays := now.Sub(e.SinceTimestamp).Hours() / 24.0
-		w := services.GLFWeight(ageDays, *glfK, float64(*glfMidpointDays))
-		embeddings = append(embeddings, raw)
-		weights = append(weights, w)
-	}
-
-	centroid, err := services.WeightedCentroid(embeddings, weights)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to compute weighted centroid")
-	}
-
-	// Detect exceptions: entries distant from centroid AND close to a standing doc
-	// that hasn't been recently activated by the trend.
-	recentSlugs, err := database.GetRecentlyActivatedStandingSlugs(pool, *glfMidpointDays)
-	if err != nil {
-		log.WithError(err).Warn("Failed to fetch recently activated standing slugs — skipping exception detection")
-	}
-	recentSlugSet := make(map[string]bool, len(recentSlugs))
-	for _, s := range recentSlugs {
-		recentSlugSet[s] = true
-	}
-
-	standings, err := database.GetAllCurrentEmbeddings(pool)
-	if err != nil {
-		log.WithError(err).Warn("Failed to fetch standing document embeddings — skipping exception detection")
-	}
-
-	var exceptions []mqttclient.TrendException
-	for _, e := range entries {
-		raw := e.Embedding.Slice()
-		if len(raw) == 0 {
-			continue
-		}
-		centroidSim := services.CosineSimilarity(raw, centroid)
-		centroidDist := 1.0 - centroidSim
-		if float64(centroidDist) < *exceptionThreshold {
-			continue
-		}
-		// Entry is distant from centroid — check if it's close to an inactive standing doc
-		for _, sd := range standings {
-			if recentSlugSet[sd.Slug] {
-				continue
-			}
-			sdRaw := sd.Embedding.Slice()
-			if len(sdRaw) == 0 {
-				continue
-			}
-			standingSim := services.CosineSimilarity(raw, sdRaw)
-			if standingSim > float32(cfg.AssociationThreshold) {
-				exceptions = append(exceptions, mqttclient.TrendException{
-					EntryID:               e.ID,
-					ActivatedStandingSlug: sd.Slug,
-					CentroidDistance:      centroidDist,
-					StandingSimilarity:    standingSim,
-				})
-			}
+	// Collect all slugs present across entries
+	slugSet := make(map[string]bool)
+	for _, pt := range points {
+		for slug := range pt.Coords {
+			slugSet[slug] = true
 		}
 	}
+	allSlugs := make([]string, 0, len(slugSet))
+	for s := range slugSet {
+		allSlugs = append(allSlugs, s)
+	}
+	sort.Strings(allSlugs)
+
+	midpoint := float64(*glfMidpointDays)
+	gravity := services.GLFWeightedGravityProfile(points, allSlugs, *glfK, midpoint)
+	soulSpeed := services.SoulSpeedProfile(points, *glfK, midpoint)
+	spread := services.ClusterSpread(points, allSlugs, gravity)
+
+	summary := buildHumanSummary(gravity, soulSpeed, spread, len(points), *windowDays)
 
 	result := mqttclient.TrendResult{
 		Envelope: mqttclient.Envelope{
@@ -133,51 +83,24 @@ func main() {
 			Source:    "trend-detect",
 			Timestamp: time.Now(),
 		},
-		TrendVector: centroid,
-		EntryCount:  len(embeddings),
-		WindowDays:  *windowDays,
-		Exceptions:  exceptions,
-		ComputedAt:  time.Now(),
+		GravityProfile: map[string]float32(gravity),
+		SoulSpeed:      soulSpeed,
+		ClusterSpread:  spread,
+		EntryCount:     len(points),
+		WindowDays:     *windowDays,
+		ComputedAt:     time.Now(),
+		HumanSummary:   summary,
 	}
 
 	log.WithFields(map[string]interface{}{
 		"entry_count":    result.EntryCount,
 		"window_days":    result.WindowDays,
-		"exceptions":     len(exceptions),
-		"centroid_mag":   vectorMagnitude(centroid),
-	}).Info("Trend computed")
+		"soul_speed":     soulSpeed,
+		"cluster_spread": spread,
+	}).Info("Trend computed in standing space")
 
 	if !*publish {
-		// Print human-readable concept summary before the raw JSON
-		if len(standings) > 0 {
-			type scored struct {
-				slug  string
-				title string
-				sim   float32
-			}
-			var ranked []scored
-			for _, sd := range standings {
-				sdRaw := sd.Embedding.Slice()
-				if len(sdRaw) == 0 {
-					continue
-				}
-				ranked = append(ranked, scored{sd.Slug, sd.Title, services.CosineSimilarity(centroid, sdRaw)})
-			}
-			// Sort descending by similarity
-			for i := 0; i < len(ranked); i++ {
-				for j := i + 1; j < len(ranked); j++ {
-					if ranked[j].sim > ranked[i].sim {
-						ranked[i], ranked[j] = ranked[j], ranked[i]
-					}
-				}
-			}
-			fmt.Fprintf(os.Stdout, "\nTrend → standing document similarity:\n")
-			for _, r := range ranked {
-				fmt.Fprintf(os.Stdout, "  %-40s  %.3f  %s\n", r.slug, r.sim, r.title)
-			}
-			fmt.Fprintln(os.Stdout)
-		}
-
+		fmt.Fprintln(os.Stdout, summary)
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(result); err != nil {
@@ -202,10 +125,55 @@ func main() {
 	log.WithField("topic", mqttclient.TopicTrendCurrent).Info("Published trend result")
 }
 
-func vectorMagnitude(v []float32) float64 {
-	var sum float64
-	for _, x := range v {
-		sum += float64(x) * float64(x)
+// buildHumanSummary renders a multi-line text description of the trend.
+func buildHumanSummary(gravity services.GravityProfile, soulSpeed, spread float32, entryCount, windowDays int) string {
+	type scored struct {
+		slug string
+		val  float32
 	}
-	return math.Sqrt(sum)
+	ranked := make([]scored, 0, len(gravity))
+	for slug, val := range gravity {
+		ranked = append(ranked, scored{slug, val})
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].val > ranked[j].val })
+
+	s := fmt.Sprintf("Trend (%d entries, %dd window):\n", entryCount, windowDays)
+
+	s += "  Top gravity: "
+	limit := 3
+	if len(ranked) < limit {
+		limit = len(ranked)
+	}
+	for i := 0; i < limit; i++ {
+		if i > 0 {
+			s += "  "
+		}
+		s += fmt.Sprintf(" %s %.3f", ranked[i].slug, ranked[i].val)
+	}
+	s += "\n"
+
+	s += fmt.Sprintf("  Soul Speed:   %.3f  (%s)\n", soulSpeed, soulSpeedLabel(soulSpeed))
+
+	spreadLabel := "moderate"
+	if spread < 0.03 {
+		spreadLabel = "tight cluster"
+	} else if spread > 0.08 {
+		spreadLabel = "dispersed"
+	}
+	s += fmt.Sprintf("  Spread:       %.3f  (%s)", spread, spreadLabel)
+
+	return s
+}
+
+func soulSpeedLabel(v float32) string {
+	switch {
+	case v >= 0.65:
+		return "high aliveness"
+	case v >= 0.55:
+		return "moderate aliveness"
+	case v >= 0.45:
+		return "low aliveness"
+	default:
+		return "dormant"
+	}
 }

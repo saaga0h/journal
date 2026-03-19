@@ -54,7 +54,7 @@ Key variables in `.env.dev`:
 | `ingest-standing` | CLI — ingest a standing document from a markdown file |
 | `reembed` | CLI — re-embed entries that have null embeddings (run when Ollama was previously unavailable) |
 | `concept-extract` | CLI — extract engineering concepts from recent commits in a repository |
-| `trend-detect` | CLI — compute GLF-weighted embedding centroid of recent entries, detect exceptions, publish trend to MQTT |
+| `trend-detect` | CLI — compute gravity profile (per-standing-doc attraction) and soul speed, publish to MQTT |
 | `brief-assemble` | Long-running service — MQTT-triggered brief assembler, queries Minerva with trend vector, surfaces one article or silence |
 | `brief-feedback` | CLI — record read/skip feedback for a brief session (`--session-id`, `--action read\|skip`) |
 
@@ -95,8 +95,15 @@ Detect temporal trends:
 # Compute and publish trend to MQTT
 make run-trend-detect
 
-# Compute trend, print JSON (no MQTT publish)
+# Compute trend, print human-readable summary + JSON (no MQTT publish)
 make trend-detect-dry
+```
+
+Visualize entries in standing-doc space:
+
+```bash
+# 3D scatter plot (PCA-reduced lateral dims, soul speed on Z axis)
+python3 tools/visualize_space.py
 ```
 
 Assemble and manage morning briefs:
@@ -139,3 +146,13 @@ Ports are offset from defaults to avoid conflicts with other local services:
 Standing documents are markdown files describing patterns that have been found true across many contexts — your personal epistemology. They define the gravitational field that journal entries are pulled toward. The journal is only as useful as the standing documents that exist before entries start accumulating.
 
 See [concepts/journal-concept.md](concepts/journal-concept.md) for the full model.
+
+## Standing-Doc Space
+
+Each journal entry is positioned in an N-dimensional space where axes are standing documents. The system computes similarity between entry embeddings and each standing document embedding, placing entries at coordinates (similarity-to-doc-1, similarity-to-doc-2, ...). An orthogonal axis called "soul speed" measures the aliveness of thinking — how much the entry churns internally, independent of which standing documents it touches.
+
+**Gravity Profile** (`trend-detect` output): A weighted vector showing how strongly recent thinking gravitates toward each standing document. Weights are GLF-decayed by entry age. Values ~0.4–0.8 indicate gravitational pull, <0.1 suggests no attraction.
+
+**Soul Speed**: A scalar from 0–1 measuring internal mental activity. High values (>0.65) indicate intense thinking; low values (<0.45) suggest dormant patterns. Computed separately from lateral standing-doc similarities.
+
+**Cluster Spread**: Standard deviation of all entries' multi-doc vectors. Tight cluster (<0.03) suggests convergent thinking; dispersed (>0.08) suggests exploration across multiple docs.
