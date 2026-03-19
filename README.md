@@ -141,6 +141,44 @@ Ports are offset from defaults to avoid conflicts with other local services:
 - Mosquitto: `localhost:1884`
 - Ollama: `localhost:11434` (standard, running on host)
 
+## Minerva Integration
+
+`brief-assemble` queries Minerva for article recommendations based on the current trend. Minerva must implement both sides of this protocol.
+
+### Query — Journal → Minerva
+
+**Topic**: `minerva/query/brief`
+
+```json
+{
+  "session_id": "189e5c5163294ec0",
+  "gravity_profile": {
+    "universe-design": 0.647,
+    "gradient-lossy-functions": 0.634,
+    "two-corpus": 0.626
+  },
+  "top_k": 5,
+  "response_topic": "journal/brief/minerva-response"
+}
+```
+
+`gravity_profile` is a map of standing_slug → GLF-weighted mean similarity for the current trend window. Soul-speed is excluded. `response_topic` is where Minerva must publish its response. Timeout is 30s (configurable via `--timeout-seconds`).
+
+### Response — Minerva → Journal
+
+**Topic**: `journal/brief/minerva-response`
+
+```json
+{
+  "session_id": "189e5c5163294ec0",
+  "article_url": "https://arxiv.org/abs/...",
+  "article_title": "...",
+  "score": 0.72
+}
+```
+
+`session_id` must echo the query exactly — mismatches are discarded. `score` is compared against `BRIEF_RELEVANCE_THRESHOLD` (default 0.6); below threshold produces silence. If Minerva has no candidates, respond with `score: 0.0` rather than letting the timeout fire.
+
 ## What Are Standing Documents
 
 Standing documents are markdown files describing patterns that have been found true across many contexts — your personal epistemology. They define the gravitational field that journal entries are pulled toward. The journal is only as useful as the standing documents that exist before entries start accumulating.
