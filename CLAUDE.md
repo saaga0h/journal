@@ -46,3 +46,8 @@ Ports are offset from defaults to avoid conflicts with Minerva:
 - **Ollama chat endpoint is `/api/chat`** (not `/api/generate`). Request uses `messages` array with `{role, content}` objects.
 - **Chat model config** — `OLLAMA_CHAT_MODEL` (default `qwen2.5:7b`) and `OLLAMA_CHAT_NUM_CTX` (default `32768`) control concept extraction. Chat timeout shares `OLLAMA_TIMEOUT`.
 - **Concept extractor** — `cmd/concept-extract` is a one-shot CLI like `ingest-standing`. Use `make extract REPO=<path> DAYS=7`. The `--deep` flag is recommended for meaningful embeddings (produces theoretical territory).
+- **`--week` flag** resolves to the previous calendar week (Mon 00:00:00 UTC — Sun 23:59:59 UTC). Deterministic — running any day of the week produces the same window for the prior week.
+- **`until_timestamp` is `*time.Time` in `JournalEntry`** — pointer handles NULL for entries created before migration 004. Check `.IsZero()` before assigning from MQTT messages or you will store zero-time as a real timestamp.
+- **`trend-detect` needs ≥3 entries** with embeddings to produce output. With fewer it logs a message and exits 0 — this is intentional, not a bug.
+- **`BRIEF_RELEVANCE_THRESHOLD`** env var (default 0.6) — start high to prefer silence. Calibrate down only based on evidence from `brief_feedback` data.
+- **`brief-assemble` depends on Minerva** — publishes to `minerva/query/brief`, which has no handler on the Minerva side yet. Until Minerva implements it, `brief-assemble` will always produce `silence_reason = "minerva_timeout"`.

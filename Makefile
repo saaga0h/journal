@@ -32,6 +32,9 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -o $(BUILD_DIR)/reembed ./cmd/reembed/
 	go build -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
+	go build -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
+	go build -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
+	go build -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
@@ -42,6 +45,9 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/entry-ingest ./cmd/entry-ingest/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/reembed ./cmd/reembed/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/concept-extract ./cmd/concept-extract/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
 	@echo "Done."
 
 # Tests
@@ -141,8 +147,28 @@ list-associations: ## List entry-standing associations
 run-concept-extract: build-primitives ## Run concept extraction (REPO=path DAYS=1)
 	$(BUILD_DIR)/concept-extract --repo $(REPO) --days $(or $(DAYS),1) --config .env.dev
 
-extract: build-primitives ## Extract concepts from a repo (REPO=path DAYS=7)
+extract: build-primitives ## Extract concepts for the previous calendar week (REPO=path)
+	$(BUILD_DIR)/concept-extract --repo $(REPO) --week --deep --config .env.dev
+
+extract-days: build-primitives ## Extract concepts for the last N days (REPO=path DAYS=7)
 	$(BUILD_DIR)/concept-extract --repo $(REPO) --days $(or $(DAYS),1) --deep --config .env.dev
+
+# ── Trend detection ───────────────────────────────────────────────────────────
+
+run-trend-detect: build-primitives ## Compute current trend and publish to MQTT
+	$(BUILD_DIR)/trend-detect --config .env.dev
+
+trend-detect-dry: build-primitives ## Compute trend, print JSON (no MQTT publish)
+	$(BUILD_DIR)/trend-detect --config .env.dev --publish=false
+
+# ── Morning brief ─────────────────────────────────────────────────────────────
+
+run-brief-assemble: build-primitives ## Run morning brief assembler service
+	$(BUILD_DIR)/brief-assemble --config .env.dev
+
+trigger-brief: ## Trigger morning brief immediately (development)
+	mosquitto_pub -h localhost -p 1884 -t "journal/brief/trigger" \
+		-m '{"message_id":"manual","source":"makefile","timestamp":"$(shell date -u +%Y-%m-%dT%H:%M:%SZ)"}'
 
 # CI simulation
 ci: deps fmt test build-primitives ## Full CI pipeline

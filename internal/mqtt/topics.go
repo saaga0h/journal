@@ -13,9 +13,18 @@ const (
 	// TopicConceptCreated is published when a project concept document is ingested.
 	TopicConceptCreated = "journal/concepts/created"
 
+	// TopicTrendCurrent is published by trend-detect with the current trend centroid.
+	TopicTrendCurrent = "journal/trend/current"
+
 	// TopicBriefTrigger triggers the morning brief assembly.
 	TopicBriefTrigger = "journal/brief/trigger"
 
 	// TopicBriefResult carries the brief result (one article or silence).
 	TopicBriefResult = "journal/brief/result"
+
+	// TopicMinervaQuery is published to Minerva to request relevant unread material.
+	TopicMinervaQuery = "minerva/query/brief"
+
+	// TopicMinervaResponse is where Minerva publishes brief query results back.
+	TopicMinervaResponse = "journal/brief/minerva-response"
 )

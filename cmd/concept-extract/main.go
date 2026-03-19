@@ -20,6 +20,7 @@ func main() {
 		repoPath   = flag.String("repo", "", "path to git repo (required)")
 		days       = flag.Int("days", 1, "how many days back to look")
 		hours      = flag.Int("hours", 0, "how many hours back (overrides days if set)")
+		week       = flag.Bool("week", false, "extract previous calendar week (Mon-Sun UTC), overrides --days/--hours")
 		deep       = flag.Bool("deep", false, "run second pass for theoretical territory")
 		maxDiff    = flag.Int("max-diff", 12000, "max bytes of diff content to send")
 		configPath = flag.String("config", "", "path to .env configuration file")
@@ -38,19 +39,32 @@ func main() {
 	}
 	logger.SetLevel(cfg.Log.Level)
 
-	var since time.Time
-	if *hours > 0 {
+	var since, until time.Time
+	if *week {
+		now := time.Now().UTC()
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7 // Sunday = 7 in ISO week numbering
+		}
+		daysFromMonday := weekday - 1
+		thisMonday := now.AddDate(0, 0, -daysFromMonday).Truncate(24 * time.Hour)
+		since = thisMonday.AddDate(0, 0, -7)
+		until = thisMonday.Add(-time.Second) // last Sunday 23:59:59 UTC
+	} else if *hours > 0 {
 		since = time.Now().Add(-time.Duration(*hours) * time.Hour)
+		until = time.Now()
 	} else {
 		since = time.Now().AddDate(0, 0, -*days)
+		until = time.Now()
 	}
 
 	log.WithFields(map[string]interface{}{
 		"repo":  *repoPath,
 		"since": since.Format("2006-01-02 15:04"),
+		"until": until.Format("2006-01-02 15:04"),
 	}).Info("Fetching commits")
 
-	messages, err := services.GetCommitMessages(*repoPath, since)
+	messages, err := services.GetCommitMessages(*repoPath, since, until)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to get commit messages")
 	}
@@ -60,7 +74,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	diff, err := services.GetNonTestDiff(*repoPath, since, *maxDiff)
+	diff, err := services.GetNonTestDiff(*repoPath, since, until, *maxDiff)
 	if err != nil {
 		log.WithError(err).Warn("Could not get diff, continuing with messages only")
 		diff = ""
@@ -113,8 +127,10 @@ func main() {
 		},
 		Repository:       repoName,
 		SinceTimestamp:   since,
+		UntilTimestamp:   until,
 		ExtractorVersion: "0.2.0",
 		Engineering:      json.RawMessage(engineering),
+		GitInput:         gitContent,
 	}
 
 	if second != nil {

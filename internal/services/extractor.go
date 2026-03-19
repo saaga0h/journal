@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const gitTimeFormat = "2006-01-02T15:04:05"
+
 const systemPrompt = `You are a research concept extractor. Given git commit messages and diffs, extract the core scientific, mathematical, and engineering concepts present in the work.
 
 Focus on:
@@ -54,15 +56,20 @@ Required JSON structure:
 arxiv_search_terms must use researcher vocabulary, not engineer vocabulary. Prefer mathematical and theoretical formulations.`
 
 // GetCommitMessages returns all commit messages in the time range, oldest first.
-func GetCommitMessages(repoPath string, since time.Time) (string, error) {
-	sinceStr := since.Format("2006-01-02T15:04:05")
-	cmd := exec.Command("git", "-C", repoPath, "log",
+// If until is non-zero, only commits before that time are included.
+func GetCommitMessages(repoPath string, since time.Time, until time.Time) (string, error) {
+	sinceStr := since.Format(gitTimeFormat)
+	args := []string{"-C", repoPath, "log",
 		fmt.Sprintf("--since=%s", sinceStr),
 		"--reverse",
 		"--no-color",
 		"--pretty=format:COMMIT %h %ad%n%s%n%b%n",
 		"--date=short",
-	)
+	}
+	if !until.IsZero() {
+		args = append(args, fmt.Sprintf("--before=%s", until.Format(gitTimeFormat)))
+	}
+	cmd := exec.Command("git", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git log (messages) failed: %w", err)
@@ -71,9 +78,10 @@ func GetCommitMessages(repoPath string, since time.Time) (string, error) {
 }
 
 // GetNonTestDiff returns diffs of non-test, non-vendor files, oldest first.
-func GetNonTestDiff(repoPath string, since time.Time, maxBytes int) (string, error) {
-	sinceStr := since.Format("2006-01-02T15:04:05")
-	cmd := exec.Command("git", "-C", repoPath, "log",
+// If until is non-zero, only commits before that time are included.
+func GetNonTestDiff(repoPath string, since time.Time, until time.Time, maxBytes int) (string, error) {
+	sinceStr := since.Format(gitTimeFormat)
+	args := []string{"-C", repoPath, "log",
 		fmt.Sprintf("--since=%s", sinceStr),
 		"--reverse",
 		"--no-color",
@@ -88,7 +96,12 @@ func GetNonTestDiff(repoPath string, since time.Time, maxBytes int) (string, err
 		":(exclude)node_modules/",
 		":(exclude)*.sum",
 		":(exclude)*.lock",
-	)
+	}
+	if !until.IsZero() {
+		// Insert --before before the -- path separator
+		args = append(args[:9], append([]string{fmt.Sprintf("--before=%s", until.Format(gitTimeFormat))}, args[9:]...)...)
+	}
+	cmd := exec.Command("git", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git log (diff) failed: %w", err)

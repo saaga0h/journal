@@ -24,6 +24,7 @@ type StandingDocument struct {
 // StandingDocumentEmbedding holds a slug and its current embedding for association queries.
 type StandingDocumentEmbedding struct {
 	Slug      string
+	Title     string
 	Embedding pgvector.Vector
 }
 
@@ -127,7 +128,7 @@ func GetAllCurrentEmbeddings(pool *pgxpool.Pool) ([]StandingDocumentEmbedding, e
 	ctx := context.Background()
 
 	rows, err := pool.Query(ctx,
-		`SELECT sd.slug, sd.embedding
+		`SELECT sd.slug, sd.title, sd.embedding
 		 FROM standing_documents sd
 		 WHERE sd.embedding IS NOT NULL
 		   AND sd.version = (SELECT MAX(version) FROM standing_documents sd2 WHERE sd2.slug = sd.slug)
@@ -141,7 +142,7 @@ func GetAllCurrentEmbeddings(pool *pgxpool.Pool) ([]StandingDocumentEmbedding, e
 	var embeddings []StandingDocumentEmbedding
 	for rows.Next() {
 		var e StandingDocumentEmbedding
-		if err := rows.Scan(&e.Slug, &e.Embedding); err != nil {
+		if err := rows.Scan(&e.Slug, &e.Title, &e.Embedding); err != nil {
 			return nil, fmt.Errorf("failed to scan standing document embedding: %w", err)
 		}
 		embeddings = append(embeddings, e)

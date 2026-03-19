@@ -110,9 +110,16 @@ func main() {
 			// Build raw output from the full message
 			rawOutput, _ := json.Marshal(msg)
 
+			var untilTimestamp *time.Time
+			if !msg.UntilTimestamp.IsZero() {
+				t := msg.UntilTimestamp
+				untilTimestamp = &t
+			}
+
 			entry := &database.JournalEntry{
 				Repository:           msg.Repository,
 				SinceTimestamp:       msg.SinceTimestamp,
+				UntilTimestamp:       untilTimestamp,
 				ExtractorVersion:     msg.ExtractorVersion,
 				Engineering:          msg.Engineering,
 				Theoretical:          msg.Theoretical,
@@ -120,6 +127,7 @@ func main() {
 				Concepts:             concepts,
 				TheoreticalTerritory: theoTerritory,
 				Embedding:            embeddingVec,
+				GitInput:             msg.GitInput,
 				RawOutput:            rawOutput,
 			}
 

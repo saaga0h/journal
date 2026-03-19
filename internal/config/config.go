@@ -13,7 +13,8 @@ type Config struct {
 	Database             DatabaseConfig `json:"database"`
 	MQTT                 MQTTConfig     `json:"mqtt"`
 	Ollama               OllamaConfig   `json:"ollama"`
-	AssociationThreshold float64        `json:"association_threshold"`
+	AssociationThreshold    float64        `json:"association_threshold"`
+	BriefRelevanceThreshold float64        `json:"brief_relevance_threshold"`
 }
 
 type AppConfig struct {
@@ -97,6 +98,7 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	config.AssociationThreshold = getEnvFloat("ASSOCIATION_THRESHOLD", 0.3)
+	config.BriefRelevanceThreshold = getEnvFloat("BRIEF_RELEVANCE_THRESHOLD", 0.6)
 
 	return config, nil
 }

@@ -44,6 +44,7 @@ Key variables in `.env.dev`:
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama on host (not in Docker) |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model — must produce 768-dim vectors |
 | `ASSOCIATION_THRESHOLD` | `0.3` | Minimum similarity for entry-standing associations |
+| `BRIEF_RELEVANCE_THRESHOLD` | `0.6` | Minimum similarity for brief entry relevance |
 
 ## Binaries
 
@@ -53,6 +54,9 @@ Key variables in `.env.dev`:
 | `ingest-standing` | CLI — ingest a standing document from a markdown file |
 | `reembed` | CLI — re-embed entries that have null embeddings (run when Ollama was previously unavailable) |
 | `concept-extract` | CLI — extract engineering concepts from recent commits in a repository |
+| `trend-detect` | CLI — compute GLF-weighted embedding centroid of recent entries, detect exceptions, publish trend to MQTT |
+| `brief-assemble` | Long-running service — MQTT-triggered brief assembler, queries Minerva with trend vector, surfaces one article or silence |
+| `brief-feedback` | CLI — record read/skip feedback for a brief session (`--session-id`, `--action read\|skip`) |
 
 ## Running in Dev
 
@@ -75,11 +79,34 @@ make ingest-all-standing
 Extract concepts from a repository:
 
 ```bash
+# Previous calendar week (Mon-Sun UTC), deep extraction
+make extract REPO=/path/to/repo
+
+# Last N days, deep extraction
+make extract-days REPO=/path/to/repo DAYS=7
+
 # Last 1 day (default)
 make run-concept-extract REPO=/path/to/repo
+```
 
-# Last 7 days, deep extraction
-make extract REPO=/path/to/repo DAYS=7
+Detect temporal trends:
+
+```bash
+# Compute and publish trend to MQTT
+make run-trend-detect
+
+# Compute trend, print JSON (no MQTT publish)
+make trend-detect-dry
+```
+
+Assemble and manage morning briefs:
+
+```bash
+# Run brief assembler service (keep running in background)
+make run-brief-assemble
+
+# Trigger brief generation immediately (development)
+make trigger-brief
 ```
 
 ## Inspecting State
