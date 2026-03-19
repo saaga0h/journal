@@ -48,3 +48,15 @@ func BuildEmbedText(engineering, theoretical json.RawMessage) string {
 
 	return strings.Join(parts, "\n")
 }
+
+// TruncateForEmbed truncates text to maxChars characters for embedding.
+// nomic-embed-text has an 8192 token context limit (~4 chars/token → ~32k chars,
+// but in practice the API rejects inputs beyond ~8k chars for long documents).
+// 6000 chars captures the definitional head of any standing document safely.
+func TruncateForEmbed(text string, maxChars int) string {
+	runes := []rune(text)
+	if len(runes) <= maxChars {
+		return text
+	}
+	return string(runes[:maxChars])
+}

@@ -88,7 +88,7 @@ func main() {
 	ollama := services.NewOllama(cfg.Ollama)
 	ollama.SetLogger(log)
 
-	embedding, err := ollama.Embed(string(content))
+	embedding, err := ollama.Embed(services.TruncateForEmbed(string(content), 6000))
 	if err != nil {
 		log.WithError(err).Fatal("Failed to compute embedding — standing documents require embeddings")
 	}
