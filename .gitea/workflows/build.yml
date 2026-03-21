@@ -34,18 +34,21 @@ jobs:
 
       - name: Delete existing assets
         run: |
-          release_id=$(curl -fsSL \
+          release_id=$(curl -sSL \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
             "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
             | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-          assets=$(curl -fsSL \
+          echo "Release ID: ${release_id}"
+          assets=$(curl -sSL \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
             "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets" \
             | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
           for id in $assets; do
-            curl -fsSL -X DELETE \
+            echo "Deleting asset ${id}..."
+            curl -sSL -X DELETE \
               -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/assets/${id}"
+              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/assets/${id}" \
+            || true
           done
 
       - name: Upload binaries
