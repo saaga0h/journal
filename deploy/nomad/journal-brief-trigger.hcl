@@ -9,9 +9,6 @@ job "journal-brief-trigger" {
   datacenters = ["dc1"]
   type        = "batch"
 
-  meta {
-    version = "v0.1.0"
-  }
 
   periodic {
     crons            = ["0 7 * * *"]
@@ -36,7 +33,7 @@ job "journal-brief-trigger" {
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/brief-trigger"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/brief-trigger"
         destination = "local/brief-trigger"
         mode        = "file"
       }

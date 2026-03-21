@@ -18,9 +18,6 @@ job "journal-daemons" {
   datacenters = ["dc1"]
   type        = "service"
 
-  meta {
-    version = "v0.1.0"
-  }
 
   group "daemons" {
     count = 1
@@ -43,7 +40,7 @@ job "journal-daemons" {
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/entry-ingest"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/entry-ingest"
         destination = "local/entry-ingest"
         mode        = "file"
       }
@@ -106,7 +103,7 @@ EOT
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/brief-assemble"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/brief-assemble"
         destination = "local/brief-assemble"
         mode        = "file"
       }

@@ -1,9 +1,11 @@
 # Build and publish all Journal binaries on every push to main.
-# Binaries are uploaded to a fixed "latest" release, overwriting previous ones.
+# Binaries are copied directly to the nginx artifact server on the packer host.
+# Served at: http://192.168.10.50:8080/api/binaries/journal/<arch>/<binary>
 #
 # Prerequisites:
-#   - JOURNAL_RELEASE_TOKEN secret set in repo settings (repository read+write)
-#   - Self-hosted runner "packer" registered in Gitea with Go and make available
+#   - Runner "packer" is the same host as the nginx artifact server
+#   - /var/lib/packer-builds/binaries/journal/{amd64,arm64}/ directories exist
+#     and are writable by the act_runner user
 
 name: build
 
@@ -20,48 +22,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Build all binaries
-        run: make build-primitives
-
-      - name: Ensure latest release exists
+      - name: Build amd64 binaries
+        env:
+          GOOS: linux
+          GOARCH: amd64
         run: |
-          curl -fsSL -X POST \
-            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"tag_name":"latest","name":"latest","body":"Latest build from main"}' \
-            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases" \
-          || true
+          mkdir -p build/amd64
+          BUILD_DIR=./build/amd64 make build-primitives
 
-      - name: Delete existing assets
+      - name: Build arm64 binaries
+        env:
+          GOOS: linux
+          GOARCH: arm64
         run: |
-          release_id=$(curl -sSL \
-            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
-            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*' || true)
-          echo "Release ID: ${release_id}"
-          assets=$(curl -sSL \
-            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets" \
-            | grep -o '"id":[0-9]*' | grep -o '[0-9]*' || true)
-          for id in $assets; do
-            echo "Deleting asset ${id}..."
-            curl -sSL -X DELETE \
-              -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/assets/${id}" \
-            || true
-          done
+          mkdir -p build/arm64
+          BUILD_DIR=./build/arm64 make build-primitives
 
-      - name: Upload binaries
+      - name: Publish binaries
         run: |
-          release_id=$(curl -sSL \
-            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
-            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-          echo "Uploading to release ID: ${release_id}"
-          for binary in build/*; do
-            echo "Uploading ${binary}..."
-            curl -fsSL -X POST \
-              -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-              -F "attachment=@${binary}" \
-              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets"
-          done
+          mkdir -p /var/lib/packer-builds/binaries/journal/amd64
+          mkdir -p /var/lib/packer-builds/binaries/journal/arm64
+          cp -f build/amd64/* /var/lib/packer-builds/binaries/journal/amd64/
+          cp -f build/arm64/* /var/lib/packer-builds/binaries/journal/arm64/
+          echo "Published:"
+          ls -lh /var/lib/packer-builds/binaries/journal/amd64/

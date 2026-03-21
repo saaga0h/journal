@@ -9,9 +9,6 @@ job "journal-ingest-entries" {
   datacenters = ["dc1"]
   type        = "batch"
 
-  meta {
-    version = "v0.1.0"
-  }
 
   periodic {
     crons            = ["15 6 * * *"]
@@ -36,7 +33,7 @@ job "journal-ingest-entries" {
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/ingest-webdav-entries"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/ingest-webdav-entries"
         destination = "local/ingest-webdav-entries"
         mode        = "file"
       }

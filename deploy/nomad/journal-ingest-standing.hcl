@@ -9,9 +9,6 @@ job "journal-ingest-standing" {
   datacenters = ["dc1"]
   type        = "batch"
 
-  meta {
-    version = "v0.1.0"
-  }
 
   periodic {
     crons            = ["0 6 * * *"]
@@ -39,13 +36,13 @@ job "journal-ingest-standing" {
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/ingest-webdav-standing"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/ingest-webdav-standing"
         destination = "local/ingest-webdav-standing"
         mode        = "file"
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/reassociate"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/reassociate"
         destination = "local/reassociate"
         mode        = "file"
       }

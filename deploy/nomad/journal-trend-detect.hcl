@@ -9,9 +9,6 @@ job "journal-trend-detect" {
   datacenters = ["dc1"]
   type        = "batch"
 
-  meta {
-    version = "v0.1.0"
-  }
 
   periodic {
     crons            = ["30 6 * * *"]
@@ -36,7 +33,7 @@ job "journal-trend-detect" {
       }
 
       artifact {
-        source      = "https://git.home.federation.fi/saaga0h/journal/releases/download/${NOMAD_META_version}/trend-detect"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/trend-detect"
         destination = "local/trend-detect"
         mode        = "file"
       }
