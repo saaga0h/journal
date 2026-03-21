@@ -10,6 +10,14 @@ make psql               # psql shell via docker exec
 make mqtt-sub           # Watch journal/# MQTT traffic
 ```
 
+## Production Infrastructure
+
+- **Nomad**: `http://192.168.10.42:4646` — set `NOMAD_ADDR=http://192.168.10.42:4646`
+- **Vault**: `https://192.168.10.42:8200` — set `VAULT_ADDR=https://192.168.10.42:8200` + `VAULT_SKIP_VERIFY=true`
+- **Artifact server**: `http://192.168.10.50:8080/api/binaries/journal/<arch>/<binary>`
+- **Nomad jobs**: `deploy/nomad/` — run on `the-collective` DC, GPU nodes excluded
+- **Secrets**: `vault kv get secret/nomad/journal`
+
 ## Constraints
 
 - **Ports are offset** — Postgres: 5433 (not 5432), Mosquitto: 1884 (not 1883). Avoid conflict with Minerva.

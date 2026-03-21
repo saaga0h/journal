@@ -6,8 +6,14 @@
 #   nomad job periodic force journal-brief-trigger
 
 job "journal-brief-trigger" {
-  datacenters = ["dc1"]
+  datacenters = ["the-collective"]
   type        = "batch"
+
+  constraint {
+    attribute = "${meta.gpu}"
+    operator  = "!="
+    value     = "true"
+  }
 
 
   periodic {

@@ -11,12 +11,16 @@
 # Deploy:
 #   nomad job run deploy/nomad/journal-daemons.hcl
 #
-# Update binary version:
-#   Edit meta.version, then: nomad job run deploy/nomad/journal-daemons.hcl
 
 job "journal-daemons" {
-  datacenters = ["dc1"]
+  datacenters = ["the-collective"]
   type        = "service"
+
+  constraint {
+    attribute = "${meta.gpu}"
+    operator  = "!="
+    value     = "true"
+  }
 
 
   group "daemons" {
@@ -83,6 +87,12 @@ EOT
 
         check {
           type     = "script"
+
+  constraint {
+    attribute = "${meta.gpu}"
+    operator  = "!="
+    value     = "true"
+  }
           name     = "process-alive"
           command  = "/bin/sh"
           args     = ["-c", "pgrep -x entry-ingest > /dev/null"]
@@ -144,6 +154,12 @@ EOT
 
         check {
           type     = "script"
+
+  constraint {
+    attribute = "${meta.gpu}"
+    operator  = "!="
+    value     = "true"
+  }
           name     = "process-alive"
           command  = "/bin/sh"
           args     = ["-c", "pgrep -x brief-assemble > /dev/null"]

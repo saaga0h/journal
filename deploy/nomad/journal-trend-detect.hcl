@@ -6,8 +6,14 @@
 #   nomad job periodic force journal-trend-detect
 
 job "journal-trend-detect" {
-  datacenters = ["dc1"]
+  datacenters = ["the-collective"]
   type        = "batch"
+
+  constraint {
+    attribute = "${meta.gpu}"
+    operator  = "!="
+    value     = "true"
+  }
 
 
   periodic {
