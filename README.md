@@ -1,4 +1,6 @@
-# Journal
+# Journal a.k.a Rhino Horn
+
+> A system that imposes geometric order on organic thinking, named after Dalí's obsession with logarithmic spirals
 
 Persistent journal system for capturing thinking in motion. Automatically extracts engineering concepts from commits, links them to standing documents (your personal epistemology), and builds a queryable record of how thinking has moved over time.
 
