@@ -39,7 +39,7 @@ job "journal-ingest-entries" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/ingest-webdav-entries"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/ingest-webdav-entries"
         destination = "local/ingest-webdav-entries"
         mode        = "file"
       }

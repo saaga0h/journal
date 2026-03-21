@@ -39,7 +39,7 @@ job "journal-trend-detect" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/trend-detect"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/trend-detect"
         destination = "local/trend-detect"
         mode        = "file"
       }

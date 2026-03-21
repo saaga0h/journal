@@ -39,7 +39,7 @@ job "journal-brief-trigger" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/brief-trigger"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/brief-trigger"
         destination = "local/brief-trigger"
         mode        = "file"
       }

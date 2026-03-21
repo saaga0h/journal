@@ -44,7 +44,7 @@ job "journal-daemons" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/entry-ingest"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/entry-ingest"
         destination = "local/entry-ingest"
         mode        = "file"
       }
@@ -107,7 +107,7 @@ EOT
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/amd64/brief-assemble"
+        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/brief-assemble"
         destination = "local/brief-assemble"
         mode        = "file"
       }
