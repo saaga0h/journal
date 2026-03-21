@@ -11,7 +11,8 @@ MQTT_BROKER ?= tcp://localhost:1884
         run-ingest-standing ingest-all-standing list-standing \
         run-entry-ingest run-reembed run-reassociate list-entries list-associations \
         run-concept-extract extract extract-auto \
-        run-ingest-webdav-standing run-ingest-webdav-entries sync-standing
+        run-ingest-webdav-standing run-ingest-webdav-entries sync-standing \
+        run-brief-trigger
 
 # Default target
 help: ## Show this help message
@@ -39,6 +40,7 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
 	go build -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
 	go build -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
+	go build -o $(BUILD_DIR)/brief-trigger ./cmd/brief-trigger/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
@@ -55,6 +57,7 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-trigger ./cmd/brief-trigger/
 	@echo "Done."
 
 # Tests
@@ -192,6 +195,9 @@ run-brief-assemble: build-primitives ## Run morning brief assembler service
 trigger-brief: ## Trigger morning brief immediately (development)
 	mosquitto_pub -h localhost -p 1884 -t "journal/brief/trigger" \
 		-m '{"message_id":"manual","source":"makefile","timestamp":"$(shell date -u +%Y-%m-%dT%H:%M:%SZ)"}'
+
+run-brief-trigger: build-primitives ## Run brief-trigger binary (publishes MQTT trigger, uses .env.dev)
+	$(BUILD_DIR)/brief-trigger -config .env.dev
 
 # CI simulation
 ci: deps fmt test build-primitives ## Full CI pipeline

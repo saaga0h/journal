@@ -1,0 +1,57 @@
+# On every push to main: run concept-extract --auto --deep to capture
+# engineering activity as a journal entry.
+#
+# Prerequisites:
+#   - Self-hosted runner with network access to Postgres, MQTT, and Ollama
+#   - Runner has git on PATH
+#   - Gitea repo variable JOURNAL_VERSION set to the current release tag (e.g. v0.1.0)
+#     Update this variable after each tagged release.
+#   - Gitea repo secrets: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, DB_SSLMODE,
+#     MQTT_BROKER_URL, MQTT_USER, MQTT_PASSWORD,
+#     OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_CHAT_MODEL, OLLAMA_CHAT_NUM_CTX
+
+name: journal
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  concept-extract:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v3
+        with:
+          # concept-extract reads git log internally — full history required
+          fetch-depth: 0
+
+      - name: Download concept-extract binary
+        run: |
+          curl -fsSL -o /tmp/concept-extract \
+            "https://git.home.federation.fi/${{ github.repository }}/releases/download/${{ vars.JOURNAL_VERSION }}/concept-extract"
+          chmod +x /tmp/concept-extract
+
+      - name: Extract concepts
+        env:
+          DB_HOST:            ${{ secrets.DB_HOST }}
+          DB_PORT:            ${{ secrets.DB_PORT }}
+          DB_USER:            ${{ secrets.DB_USER }}
+          DB_PASSWORD:        ${{ secrets.DB_PASSWORD }}
+          DB_NAME:            ${{ secrets.DB_NAME }}
+          DB_SSLMODE:         ${{ secrets.DB_SSLMODE }}
+          MQTT_BROKER_URL:    ${{ secrets.MQTT_BROKER_URL }}
+          MQTT_USER:          ${{ secrets.MQTT_USER }}
+          MQTT_PASSWORD:      ${{ secrets.MQTT_PASSWORD }}
+          OLLAMA_BASE_URL:    ${{ secrets.OLLAMA_BASE_URL }}
+          OLLAMA_EMBED_MODEL: ${{ secrets.OLLAMA_EMBED_MODEL }}
+          OLLAMA_CHAT_MODEL:  ${{ secrets.OLLAMA_CHAT_MODEL }}
+          OLLAMA_CHAT_NUM_CTX: ${{ secrets.OLLAMA_CHAT_NUM_CTX }}
+          ASSOCIATION_THRESHOLD: "0.3"
+        run: |
+          /tmp/concept-extract \
+            --repo "${{ github.workspace }}" \
+            --auto \
+            --deep

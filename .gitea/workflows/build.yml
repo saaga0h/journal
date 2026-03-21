@@ -1,0 +1,48 @@
+# Build and publish all Journal binaries on tagged releases.
+# Trigger: push a tag like v0.1.0
+#
+# Prerequisites:
+#   - JOURNAL_RELEASE_TOKEN secret set in repo settings (token with repository read+write)
+#   - Self-hosted runner with Go 1.26+ available, OR use actions/setup-go
+
+name: build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.26'
+
+      - name: Build all binaries
+        run: make build-primitives
+
+      - name: Create release
+        run: |
+          curl -fsSL -X POST \
+            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\": \"${{ github.ref_name }}\", \"name\": \"${{ github.ref_name }}\", \"body\": \"Release ${{ github.ref_name }}\"}" \
+            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases" \
+          || true  # ignore error if release already exists
+
+      - name: Upload binaries
+        run: |
+          for binary in build/*; do
+            echo "Uploading ${binary}..."
+            curl -fsSL -X POST \
+              -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+              -F "attachment=@${binary}" \
+              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}/assets"
+          done
