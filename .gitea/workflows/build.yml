@@ -37,12 +37,12 @@ jobs:
           release_id=$(curl -sSL \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
             "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
-            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*' || true)
           echo "Release ID: ${release_id}"
           assets=$(curl -sSL \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
             "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets" \
-            | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
+            | grep -o '"id":[0-9]*' | grep -o '[0-9]*' || true)
           for id in $assets; do
             echo "Deleting asset ${id}..."
             curl -sSL -X DELETE \
