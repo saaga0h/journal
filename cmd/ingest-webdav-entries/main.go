@@ -153,7 +153,7 @@ func main() {
 				Source:    "webdav-entry",
 				Timestamp: time.Now(),
 			},
-			Repository:       docSlug,
+			Source:       docSlug,
 			SinceTimestamp:   dayStart,
 			UntilTimestamp:   dayEnd,
 			ExtractorVersion: "0.1.0",

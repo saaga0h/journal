@@ -149,14 +149,14 @@ run-reassociate: build-primitives ## Recompute all entry-standing associations a
 
 list-entries: ## List recent journal entries
 	@docker exec journal_postgres psql -U journal -d journal -c \
-		"SELECT id, repository as entry, LEFT(summary, 60) as summary, \
+		"SELECT id, source as entry, LEFT(summary, 60) as summary, \
 		 CASE WHEN embedding IS NOT NULL THEN 'yes' ELSE 'no' END as embedded, \
 		 created_at \
 		 FROM journal_entries ORDER BY created_at DESC LIMIT 20;"
 
 list-associations: ## List entry-standing associations
 	@docker exec journal_postgres psql -U journal -d journal -c \
-		"SELECT je.id, je.repository as entry, LEFT(je.summary, 40) as summary, \
+		"SELECT je.id, je.source as entry, LEFT(je.summary, 40) as summary, \
 		 esa.standing_slug, round(esa.similarity::numeric, 3) as similarity \
 		 FROM entry_standing_associations esa \
 		 JOIN journal_entries je ON je.id = esa.entry_id \

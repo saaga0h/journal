@@ -86,7 +86,7 @@ func main() {
 			}
 
 			log.WithFields(logrus.Fields{
-				"repository":        msg.Repository,
+				"source":        msg.Source,
 				"extractor_version": msg.ExtractorVersion,
 			}).Info("Processing entry ingest")
 
@@ -119,7 +119,7 @@ func main() {
 			}
 
 			entry := &database.JournalEntry{
-				Repository:           msg.Repository,
+				Source:           msg.Source,
 				SinceTimestamp:       msg.SinceTimestamp,
 				UntilTimestamp:       untilTimestamp,
 				ExtractorVersion:     msg.ExtractorVersion,
@@ -141,7 +141,7 @@ func main() {
 
 			log.WithFields(logrus.Fields{
 				"entry_id":   entryID,
-				"repository": msg.Repository,
+				"source": msg.Source,
 				"embedded":   embedErr == nil,
 			}).Info("Journal entry stored")
 
@@ -177,7 +177,7 @@ func main() {
 					Timestamp: time.Now(),
 				},
 				EntryID:    entryID,
-				Repository: msg.Repository,
+				Source: msg.Source,
 			}
 
 			if err := client.Publish(mqttclient.TopicEntriesCreated, createdMsg); err != nil {

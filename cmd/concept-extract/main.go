@@ -185,7 +185,7 @@ func main() {
 				Source:    "concept-extract",
 				Timestamp: time.Now(),
 			},
-			Repository:       repoName,
+			Source:       repoName,
 			SinceTimestamp:   dayStart,
 			UntilTimestamp:   dayEnd,
 			ExtractorVersion: "0.3.0",
@@ -209,7 +209,7 @@ func main() {
 
 		log.WithFields(map[string]interface{}{
 			"day":        dayStart.Format("2006-01-02"),
-			"repository": repoName,
+			"source": repoName,
 			"deep":       second != nil,
 		}).Info("Published day entry")
 
@@ -217,7 +217,7 @@ func main() {
 	}
 
 	log.WithFields(map[string]interface{}{
-		"repository": repoName,
+		"source": repoName,
 		"days_found": len(commitDays),
 		"published":  published,
 	}).Info("Extraction complete")

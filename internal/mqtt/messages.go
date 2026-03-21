@@ -16,7 +16,7 @@ type Envelope struct {
 // Engineering and Theoretical are preserved as raw JSON from the extractor output.
 type EntryIngest struct {
 	Envelope
-	Repository       string          `json:"repository"`
+	Source       string          `json:"source"`
 	SinceTimestamp   time.Time       `json:"since_timestamp"`
 	UntilTimestamp   time.Time       `json:"until_timestamp,omitempty"`
 	ExtractorVersion string          `json:"extractor_version"`
@@ -29,7 +29,7 @@ type EntryIngest struct {
 type EntryCreated struct {
 	Envelope
 	EntryID    int64  `json:"entry_id"`
-	Repository string `json:"repository"`
+	Source string `json:"source"`
 }
 
 // StandingUpdated is published when a standing document is ingested or re-versioned.

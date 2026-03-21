@@ -91,7 +91,7 @@ func main() {
 
 		log.WithFields(logrus.Fields{
 			"entry_id":     entry.ID,
-			"repository":   entry.Repository,
+			"source":   entry.Source,
 			"associations": len(assocs),
 		}).Info("Reassociated entry")
 

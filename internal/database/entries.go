@@ -11,18 +11,18 @@ import (
 	pgvector "github.com/pgvector/pgvector-go"
 )
 
-// GetLastEntryTimestamp returns the maximum until_timestamp for entries in the given repository.
-// Returns nil if no entries exist for the repository or all existing entries have NULL until_timestamp.
-func GetLastEntryTimestamp(pool *pgxpool.Pool, repository string) (*time.Time, error) {
+// GetLastEntryTimestamp returns the maximum until_timestamp for entries in the given source.
+// Returns nil if no entries exist for the source or all existing entries have NULL until_timestamp.
+func GetLastEntryTimestamp(pool *pgxpool.Pool, source string) (*time.Time, error) {
 	ctx := context.Background()
 
 	var ts *time.Time
 	err := pool.QueryRow(ctx,
-		`SELECT MAX(until_timestamp) FROM journal_entries WHERE repository = $1`,
-		repository,
+		`SELECT MAX(until_timestamp) FROM journal_entries WHERE source = $1`,
+		source,
 	).Scan(&ts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get last entry timestamp for %s: %w", repository, err)
+		return nil, fmt.Errorf("failed to get last entry timestamp for %s: %w", source, err)
 	}
 
 	return ts, nil
@@ -31,7 +31,7 @@ func GetLastEntryTimestamp(pool *pgxpool.Pool, repository string) (*time.Time, e
 // JournalEntry represents a timestamped record of concept extractor output.
 type JournalEntry struct {
 	ID                   int64
-	Repository           string
+	Source               string
 	SinceTimestamp       time.Time
 	UntilTimestamp       *time.Time
 	ExtractorVersion     string
@@ -57,7 +57,7 @@ type EntryStandingAssociation struct {
 // Coords maps standing_slug -> similarity score. No raw embedding needed.
 type EntrySpacePoint struct {
 	EntryID        int64
-	Repository     string
+	Source     string
 	SinceTimestamp time.Time
 	CreatedAt      time.Time
 	Coords         map[string]float32 // slug -> similarity score
@@ -66,7 +66,7 @@ type EntrySpacePoint struct {
 
 // ListEntriesOpts controls filtering for ListEntries queries.
 type ListEntriesOpts struct {
-	Repository string
+	Source string
 	Since      time.Time
 	Until      time.Time
 	Limit      int
@@ -79,10 +79,10 @@ func InsertEntry(pool *pgxpool.Pool, entry *JournalEntry) (int64, error) {
 	var id int64
 	err := pool.QueryRow(ctx,
 		`INSERT INTO journal_entries
-		 (repository, since_timestamp, until_timestamp, extractor_version, engineering, theoretical,
+		 (source, since_timestamp, until_timestamp, extractor_version, engineering, theoretical,
 		  summary, concepts, theoretical_territory, annotation, embedding, git_input, raw_output)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		 ON CONFLICT (repository, since_timestamp) WHERE since_timestamp IS NOT NULL
+		 ON CONFLICT (source, since_timestamp) WHERE since_timestamp IS NOT NULL
 		 DO UPDATE SET
 		     until_timestamp       = EXCLUDED.until_timestamp,
 		     extractor_version     = EXCLUDED.extractor_version,
@@ -95,7 +95,7 @@ func InsertEntry(pool *pgxpool.Pool, entry *JournalEntry) (int64, error) {
 		     git_input             = EXCLUDED.git_input,
 		     raw_output            = EXCLUDED.raw_output
 		 RETURNING id`,
-		entry.Repository, entry.SinceTimestamp, entry.UntilTimestamp, entry.ExtractorVersion,
+		entry.Source, entry.SinceTimestamp, entry.UntilTimestamp, entry.ExtractorVersion,
 		entry.Engineering, entry.Theoretical,
 		entry.Summary, entry.Concepts, entry.TheoreticalTerritory,
 		entry.Annotation, entry.Embedding, entry.GitInput, entry.RawOutput,
@@ -114,13 +114,13 @@ func GetEntry(pool *pgxpool.Pool, id int64) (*JournalEntry, error) {
 	var gitInput *string
 
 	err := pool.QueryRow(ctx,
-		`SELECT id, repository, since_timestamp, until_timestamp, extractor_version,
+		`SELECT id, source, since_timestamp, until_timestamp, extractor_version,
 		        engineering, theoretical, summary, concepts, theoretical_territory,
 		        annotation, embedding, git_input, raw_output, created_at
 		 FROM journal_entries
 		 WHERE id = $1`,
 		id,
-	).Scan(&e.ID, &e.Repository, &e.SinceTimestamp, &e.UntilTimestamp, &e.ExtractorVersion,
+	).Scan(&e.ID, &e.Source, &e.SinceTimestamp, &e.UntilTimestamp, &e.ExtractorVersion,
 		&e.Engineering, &e.Theoretical, &e.Summary, &e.Concepts, &e.TheoreticalTerritory,
 		&e.Annotation, &e.Embedding, &gitInput, &e.RawOutput, &e.CreatedAt)
 	if err != nil {
@@ -143,16 +143,16 @@ func ListEntries(pool *pgxpool.Pool, opts ListEntriesOpts) ([]JournalEntry, erro
 		limit = 100
 	}
 
-	query := `SELECT id, repository, since_timestamp, until_timestamp, extractor_version,
+	query := `SELECT id, source, since_timestamp, until_timestamp, extractor_version,
 	                 engineering, theoretical, summary, concepts, theoretical_territory,
 	                 annotation, embedding, git_input, raw_output, created_at
 	          FROM journal_entries WHERE 1=1`
 	args := []any{}
 	argN := 1
 
-	if opts.Repository != "" {
-		query += fmt.Sprintf(" AND repository = $%d", argN)
-		args = append(args, opts.Repository)
+	if opts.Source != "" {
+		query += fmt.Sprintf(" AND source = $%d", argN)
+		args = append(args, opts.Source)
 		argN++
 	}
 	if !opts.Since.IsZero() {
@@ -219,7 +219,7 @@ func GetEntriesWithoutEmbedding(pool *pgxpool.Pool) ([]JournalEntry, error) {
 	ctx := context.Background()
 
 	rows, err := pool.Query(ctx,
-		`SELECT id, repository, since_timestamp, until_timestamp, extractor_version,
+		`SELECT id, source, since_timestamp, until_timestamp, extractor_version,
 		        engineering, theoretical, summary, concepts, theoretical_territory,
 		        annotation, embedding, git_input, raw_output, created_at
 		 FROM journal_entries
@@ -301,7 +301,7 @@ func GetEntriesByStandingSlug(pool *pgxpool.Pool, slug string, limit int) ([]Jou
 	}
 
 	rows, err := pool.Query(ctx,
-		`SELECT je.id, je.repository, je.since_timestamp, je.until_timestamp, je.extractor_version,
+		`SELECT je.id, je.source, je.since_timestamp, je.until_timestamp, je.extractor_version,
 		        je.engineering, je.theoretical, je.summary, je.concepts, je.theoretical_territory,
 		        je.annotation, je.embedding, je.git_input, je.raw_output, je.created_at
 		 FROM journal_entries je
@@ -329,7 +329,7 @@ func GetRecentEntriesWithEmbeddings(pool *pgxpool.Pool, windowDays int) ([]Journ
 	since := time.Now().AddDate(0, 0, -windowDays)
 
 	rows, err := pool.Query(ctx,
-		`SELECT id, repository, since_timestamp, until_timestamp, extractor_version,
+		`SELECT id, source, since_timestamp, until_timestamp, extractor_version,
 		        engineering, theoretical, summary, concepts, theoretical_territory,
 		        annotation, embedding, git_input, raw_output, created_at
 		 FROM journal_entries
@@ -384,7 +384,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 	since := time.Now().AddDate(0, 0, -windowDays)
 
 	rows, err := pool.Query(ctx,
-		`SELECT je.id, je.repository, je.since_timestamp, je.created_at,
+		`SELECT je.id, je.source, je.since_timestamp, je.created_at,
 		        je.concepts, esa.standing_slug, esa.similarity
 		 FROM journal_entries je
 		 JOIN entry_standing_associations esa ON esa.entry_id = je.id
@@ -416,7 +416,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 		if !exists {
 			pt = &EntrySpacePoint{
 				EntryID:        entryID,
-				Repository:     repo,
+				Source:     repo,
 				SinceTimestamp: sinceTS,
 				CreatedAt:      createdAt,
 				Concepts:       concepts,
@@ -444,7 +444,7 @@ func scanEntries(rows pgx.Rows) ([]JournalEntry, error) {
 	for rows.Next() {
 		var e JournalEntry
 		var gitInput *string
-		if err := rows.Scan(&e.ID, &e.Repository, &e.SinceTimestamp, &e.UntilTimestamp,
+		if err := rows.Scan(&e.ID, &e.Source, &e.SinceTimestamp, &e.UntilTimestamp,
 			&e.ExtractorVersion,
 			&e.Engineering, &e.Theoretical, &e.Summary, &e.Concepts, &e.TheoreticalTerritory,
 			&e.Annotation, &e.Embedding, &gitInput, &e.RawOutput, &e.CreatedAt); err != nil {

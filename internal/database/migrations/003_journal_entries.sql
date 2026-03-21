@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS journal_entries (
     id BIGSERIAL PRIMARY KEY,
-    repository TEXT NOT NULL,
+    source TEXT NOT NULL,
     since_timestamp TIMESTAMPTZ,
     extractor_version TEXT,
     engineering JSONB,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS journal_entries (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_journal_entries_repository ON journal_entries(repository);
+CREATE INDEX idx_journal_entries_source ON journal_entries(source);
 CREATE INDEX idx_journal_entries_created_at ON journal_entries(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS entry_standing_associations (
