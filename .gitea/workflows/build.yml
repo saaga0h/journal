@@ -40,3 +40,13 @@ jobs:
           cp -f build/arm64/* /var/lib/packer-builds/binaries/journal/arm64/
           echo "Published:"
           ls -lh /var/lib/packer-builds/binaries/journal/amd64/
+
+      - name: Deploy Nomad jobs
+        env:
+          NOMAD_ADDR: http://192.168.10.42:4646
+        run: |
+          nomad job run deploy/nomad/journal-daemons.hcl
+          nomad job run deploy/nomad/journal-ingest-standing.hcl
+          nomad job run deploy/nomad/journal-ingest-entries.hcl
+          nomad job run deploy/nomad/journal-trend-detect.hcl
+          nomad job run deploy/nomad/journal-brief-trigger.hcl
