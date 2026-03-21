@@ -1,12 +1,9 @@
 # Build and publish all Journal binaries on every push to main.
 # Binaries are uploaded to a fixed "latest" release, overwriting previous ones.
-# This means JOURNAL_VERSION stays "latest" permanently during development.
-#
-# Once the pipeline is stable, switch to tag-based releases by changing the
-# trigger to `tags: ['v*']` and managing JOURNAL_VERSION manually.
 #
 # Prerequisites:
 #   - JOURNAL_RELEASE_TOKEN secret set in repo settings (repository read+write)
+#   - Self-hosted runner "packer" registered in Gitea with Go and make available
 
 name: build
 
@@ -17,16 +14,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: packer
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
 
       - name: Build all binaries
         run: make build-primitives
@@ -42,10 +34,13 @@ jobs:
 
       - name: Delete existing assets
         run: |
-          # Fetch asset IDs for the latest release and delete them so we can re-upload
+          release_id=$(curl -fsSL \
+            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
+            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
           assets=$(curl -fsSL \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
-            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest/assets" \
+            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets" \
             | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
           for id in $assets; do
             curl -fsSL -X DELETE \
