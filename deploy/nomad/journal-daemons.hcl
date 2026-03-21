@@ -87,12 +87,6 @@ EOT
 
         check {
           type     = "script"
-
-  constraint {
-    attribute = "${meta.gpu}"
-    operator  = "!="
-    value     = "true"
-  }
           name     = "process-alive"
           command  = "/bin/sh"
           args     = ["-c", "pgrep -x entry-ingest > /dev/null"]
@@ -154,12 +148,6 @@ EOT
 
         check {
           type     = "script"
-
-  constraint {
-    attribute = "${meta.gpu}"
-    operator  = "!="
-    value     = "true"
-  }
           name     = "process-alive"
           command  = "/bin/sh"
           args     = ["-c", "pgrep -x brief-assemble > /dev/null"]
