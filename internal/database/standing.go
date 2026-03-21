@@ -30,7 +30,8 @@ type StandingDocumentEmbedding struct {
 
 // InsertStandingDocument stores a standing document with auto-incrementing version.
 // Returns the database ID and the assigned version number.
-func InsertStandingDocument(pool *pgxpool.Pool, slug, title, content string, embedding pgvector.Vector, sourcePath string) (int64, int, error) {
+// contentHash is a SHA256 hex digest of the content; pass empty string to leave null.
+func InsertStandingDocument(pool *pgxpool.Pool, slug, title, content string, embedding pgvector.Vector, sourcePath string, contentHash string) (int64, int, error) {
 	ctx := context.Background()
 
 	// Determine next version
@@ -43,18 +44,45 @@ func InsertStandingDocument(pool *pgxpool.Pool, slug, title, content string, emb
 		return 0, 0, fmt.Errorf("failed to determine next version for slug %s: %w", slug, err)
 	}
 
+	var hashArg interface{}
+	if contentHash != "" {
+		hashArg = contentHash
+	}
+
 	var id int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO standing_documents (slug, title, content, embedding, version, source_path)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO standing_documents (slug, title, content, embedding, version, source_path, content_hash)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id`,
-		slug, title, content, embedding, nextVersion, sourcePath,
+		slug, title, content, embedding, nextVersion, sourcePath, hashArg,
 	).Scan(&id)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to insert standing document %s v%d: %w", slug, nextVersion, err)
 	}
 
 	return id, nextVersion, nil
+}
+
+// GetStandingDocumentHash returns the content_hash of the current version of a standing document.
+// Returns empty string if the document doesn't exist or has no hash stored.
+func GetStandingDocumentHash(pool *pgxpool.Pool, slug string) (string, error) {
+	ctx := context.Background()
+	var hash *string
+	err := pool.QueryRow(ctx,
+		`SELECT content_hash FROM standing_documents WHERE slug = $1 ORDER BY version DESC LIMIT 1`,
+		slug,
+	).Scan(&hash)
+	if err != nil {
+		// No rows = document doesn't exist yet
+		if err.Error() == "no rows in result set" {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get content hash for slug %s: %w", slug, err)
+	}
+	if hash == nil {
+		return "", nil
+	}
+	return *hash, nil
 }
 
 // GetCurrentStandingDocument returns the latest version of a standing document by slug.

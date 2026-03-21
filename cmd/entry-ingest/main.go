@@ -61,6 +61,8 @@ func main() {
 	client, err := mqttclient.NewClient(mqttclient.ClientConfig{
 		BrokerURL: cfg.MQTT.BrokerURL,
 		ClientID:  fmt.Sprintf("journal-entry-ingest-%d", time.Now().UnixNano()),
+		Username:  cfg.MQTT.Username,
+		Password:  cfg.MQTT.Password,
 	})
 	if err != nil {
 		log.WithError(err).Fatal("Failed to connect to MQTT broker")

@@ -8,13 +8,22 @@ import (
 )
 
 type Config struct {
-	App                  AppConfig      `json:"app"`
-	Log                  LogConfig      `json:"log"`
-	Database             DatabaseConfig `json:"database"`
-	MQTT                 MQTTConfig     `json:"mqtt"`
-	Ollama               OllamaConfig   `json:"ollama"`
+	App                     AppConfig      `json:"app"`
+	Log                     LogConfig      `json:"log"`
+	Database                DatabaseConfig `json:"database"`
+	MQTT                    MQTTConfig     `json:"mqtt"`
+	Ollama                  OllamaConfig   `json:"ollama"`
+	WebDAV                  WebDAVConfig   `json:"webdav"`
 	AssociationThreshold    float64        `json:"association_threshold"`
 	BriefRelevanceThreshold float64        `json:"brief_relevance_threshold"`
+}
+
+type WebDAVConfig struct {
+	BaseURL      string `json:"base_url"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	StandingPath string `json:"standing_path"`
+	EntriesPath  string `json:"entries_path"`
 }
 
 type AppConfig struct {
@@ -46,6 +55,8 @@ func (d DatabaseConfig) ConnectionString() string {
 type MQTTConfig struct {
 	BrokerURL string `json:"broker_url"`
 	ClientID  string `json:"client_id"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
 }
 
 type OllamaConfig struct {
@@ -87,6 +98,8 @@ func Load(configPath string) (*Config, error) {
 		MQTT: MQTTConfig{
 			BrokerURL: getEnv("MQTT_BROKER_URL", "tcp://localhost:1883"),
 			ClientID:  getEnv("MQTT_CLIENT_ID", "journal"),
+			Username:  getEnv("MQTT_USER", ""),
+			Password:  getEnv("MQTT_PASSWORD", ""),
 		},
 		Ollama: OllamaConfig{
 			BaseURL:    getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -94,6 +107,13 @@ func Load(configPath string) (*Config, error) {
 			ChatModel:  getEnv("OLLAMA_CHAT_MODEL", "qwen2.5:7b"),
 			ChatNumCtx: getEnvInt("OLLAMA_CHAT_NUM_CTX", 32768),
 			Timeout:    getEnvInt("OLLAMA_TIMEOUT", 60),
+		},
+		WebDAV: WebDAVConfig{
+			BaseURL:      getEnv("WEBDAV_URL", ""),
+			Username:     getEnv("WEBDAV_USERNAME", ""),
+			Password:     getEnv("WEBDAV_PASSWORD", ""),
+			StandingPath: getEnv("WEBDAV_STANDING_PATH", "/standing/"),
+			EntriesPath:  getEnv("WEBDAV_ENTRIES_PATH", "/entries/"),
 		},
 	}
 

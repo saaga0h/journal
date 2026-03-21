@@ -96,7 +96,7 @@ func main() {
 	// Store in database
 	id, version, err := database.InsertStandingDocument(
 		pool, docSlug, docTitle, string(content),
-		pgvector.NewVector(embedding), *filePath,
+		pgvector.NewVector(embedding), *filePath, "",
 	)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to insert standing document")
@@ -113,6 +113,8 @@ func main() {
 	mqttClient, err := mqttclient.NewClient(mqttclient.ClientConfig{
 		BrokerURL: cfg.MQTT.BrokerURL,
 		ClientID:  fmt.Sprintf("journal-ingest-standing-%d", time.Now().UnixNano()),
+		Username:  cfg.MQTT.Username,
+		Password:  cfg.MQTT.Password,
 	})
 	if err != nil {
 		log.WithError(err).Warn("Failed to connect to MQTT — document stored but notification not sent")

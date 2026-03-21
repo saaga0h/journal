@@ -10,7 +10,8 @@ MQTT_BROKER ?= tcp://localhost:1884
         setup-dev infra infra-down migrate psql mqtt-sub \
         run-ingest-standing ingest-all-standing list-standing \
         run-entry-ingest run-reembed run-reassociate list-entries list-associations \
-        run-concept-extract extract
+        run-concept-extract extract \
+        run-ingest-webdav-standing run-ingest-webdav-entries sync-standing
 
 # Default target
 help: ## Show this help message
@@ -36,6 +37,8 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
 	go build -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
 	go build -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
+	go build -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
+	go build -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
@@ -50,6 +53,8 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/trend-detect ./cmd/trend-detect/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-assemble ./cmd/brief-assemble/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-feedback ./cmd/brief-feedback/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
 	@echo "Done."
 
 # Tests
@@ -113,6 +118,16 @@ ingest-all-standing: build-primitives ## Ingest all standing documents from stan
 		$(BUILD_DIR)/ingest-standing --file "$$f" --config .env.dev; \
 	done
 
+run-ingest-webdav-standing: build-primitives ## Ingest standing documents from WebDAV
+	$(BUILD_DIR)/ingest-webdav-standing --config .env.dev
+
+run-ingest-webdav-entries: build-primitives ## Ingest freeform entries from WebDAV
+	$(BUILD_DIR)/ingest-webdav-entries --config .env.dev
+
+sync-standing: build-primitives ## Ingest standing docs from WebDAV then recompute associations
+	$(BUILD_DIR)/ingest-webdav-standing --config .env.dev
+	$(BUILD_DIR)/reassociate --config .env.dev
+
 list-standing: ## List current standing documents in the database
 	@docker exec journal_postgres psql -U journal -d journal -c \
 		"SELECT slug, title, version, created_at, \
@@ -134,14 +149,14 @@ run-reassociate: build-primitives ## Recompute all entry-standing associations a
 
 list-entries: ## List recent journal entries
 	@docker exec journal_postgres psql -U journal -d journal -c \
-		"SELECT id, repository, LEFT(summary, 60) as summary, \
+		"SELECT id, repository as entry, LEFT(summary, 60) as summary, \
 		 CASE WHEN embedding IS NOT NULL THEN 'yes' ELSE 'no' END as embedded, \
 		 created_at \
 		 FROM journal_entries ORDER BY created_at DESC LIMIT 20;"
 
 list-associations: ## List entry-standing associations
 	@docker exec journal_postgres psql -U journal -d journal -c \
-		"SELECT je.id, je.repository, LEFT(je.summary, 40) as summary, \
+		"SELECT je.id, je.repository as entry, LEFT(je.summary, 40) as summary, \
 		 esa.standing_slug, round(esa.similarity::numeric, 3) as similarity \
 		 FROM entry_standing_associations esa \
 		 JOIN journal_entries je ON je.id = esa.entry_id \

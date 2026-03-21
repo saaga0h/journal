@@ -44,6 +44,7 @@ type EntrySpacePoint struct {
 	SinceTimestamp time.Time
 	CreatedAt      time.Time
 	Coords         map[string]float32 // slug -> similarity score
+	Concepts       []string
 }
 
 // ListEntriesOpts controls filtering for ListEntries queries.
@@ -355,7 +356,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 
 	rows, err := pool.Query(ctx,
 		`SELECT je.id, je.repository, je.since_timestamp, je.created_at,
-		        esa.standing_slug, esa.similarity
+		        je.concepts, esa.standing_slug, esa.similarity
 		 FROM journal_entries je
 		 JOIN entry_standing_associations esa ON esa.entry_id = je.id
 		 WHERE je.created_at >= $1
@@ -374,10 +375,11 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 		var entryID int64
 		var repo string
 		var sinceTS, createdAt time.Time
+		var concepts []string
 		var slug string
 		var sim float32
 
-		if err := rows.Scan(&entryID, &repo, &sinceTS, &createdAt, &slug, &sim); err != nil {
+		if err := rows.Scan(&entryID, &repo, &sinceTS, &createdAt, &concepts, &slug, &sim); err != nil {
 			return nil, fmt.Errorf("failed to scan entry space point: %w", err)
 		}
 
@@ -388,6 +390,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 				Repository:     repo,
 				SinceTimestamp: sinceTS,
 				CreatedAt:      createdAt,
+				Concepts:       concepts,
 				Coords:         make(map[string]float32),
 			}
 			pointMap[entryID] = pt

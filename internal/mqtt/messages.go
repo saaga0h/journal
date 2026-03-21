@@ -50,13 +50,15 @@ type ConceptCreated struct {
 // in standing-document space.
 type TrendResult struct {
 	Envelope
-	GravityProfile map[string]float32 `json:"gravity_profile"` // slug -> weighted mean similarity
-	SoulSpeed      float32            `json:"soul_speed"`       // Soul Speed axis score
-	ClusterSpread  float32            `json:"cluster_spread"`   // tightness of the cluster
-	EntryCount     int                `json:"entry_count"`
-	WindowDays     int                `json:"window_days"`
-	ComputedAt     time.Time          `json:"computed_at"`
-	HumanSummary   string             `json:"human_summary"` // pre-rendered readable description
+	GravityProfile     map[string]float32 `json:"gravity_profile"`     // slug -> weighted mean similarity
+	SoulSpeed          float32            `json:"soul_speed"`           // Soul Speed axis score
+	ClusterSpread      float32            `json:"cluster_spread"`       // tightness of the cluster
+	TrendingConcepts   []string           `json:"trending_concepts"`    // top GLF-weighted concepts by frequency
+	UnexpectedConcepts []string           `json:"unexpected_concepts"`  // concepts from spatially distant entries
+	EntryCount         int                `json:"entry_count"`
+	WindowDays         int                `json:"window_days"`
+	ComputedAt         time.Time          `json:"computed_at"`
+	HumanSummary       string             `json:"human_summary"` // pre-rendered readable description
 }
 
 // TrendException captures a candidate phase-transition signal.

@@ -18,6 +18,8 @@ const (
 type ClientConfig struct {
 	BrokerURL string // e.g. "tcp://localhost:1883"
 	ClientID  string // unique per primitive, e.g. "journal-entry-ingest"
+	Username  string // optional — empty string skips authentication
+	Password  string // optional
 }
 
 // Client wraps the paho MQTT client with structured logging and JSON marshaling.
@@ -37,7 +39,13 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	opts := paho.NewClientOptions().
 		AddBroker(cfg.BrokerURL).
 		SetClientID(cfg.ClientID).
-		SetAutoReconnect(true).
+		SetAutoReconnect(true)
+
+	if cfg.Username != "" {
+		opts.SetUsername(cfg.Username).SetPassword(cfg.Password)
+	}
+
+	opts.
 		SetConnectRetry(true).
 		SetConnectRetryInterval(5 * time.Second).
 		SetOnConnectHandler(func(_ paho.Client) {

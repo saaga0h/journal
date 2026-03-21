@@ -74,8 +74,10 @@ func main() {
 	gravity := services.GLFWeightedGravityProfile(points, allSlugs, *glfK, midpoint)
 	soulSpeed := services.SoulSpeedProfile(points, *glfK, midpoint)
 	spread := services.ClusterSpread(points, allSlugs, gravity)
+	trending := services.TrendingConcepts(points, *glfK, midpoint, 7)
+	unexpected := services.UnexpectedConcepts(points, allSlugs, gravity, 5)
 
-	summary := buildHumanSummary(gravity, soulSpeed, spread, len(points), *windowDays)
+	summary := buildHumanSummary(gravity, soulSpeed, spread, trending, unexpected, len(points), *windowDays)
 
 	result := mqttclient.TrendResult{
 		Envelope: mqttclient.Envelope{
@@ -83,13 +85,15 @@ func main() {
 			Source:    "trend-detect",
 			Timestamp: time.Now(),
 		},
-		GravityProfile: map[string]float32(gravity),
-		SoulSpeed:      soulSpeed,
-		ClusterSpread:  spread,
-		EntryCount:     len(points),
-		WindowDays:     *windowDays,
-		ComputedAt:     time.Now(),
-		HumanSummary:   summary,
+		GravityProfile:     map[string]float32(gravity),
+		SoulSpeed:          soulSpeed,
+		ClusterSpread:      spread,
+		TrendingConcepts:   trending,
+		UnexpectedConcepts: unexpected,
+		EntryCount:         len(points),
+		WindowDays:         *windowDays,
+		ComputedAt:         time.Now(),
+		HumanSummary:       summary,
 	}
 
 	log.WithFields(map[string]interface{}{
@@ -112,6 +116,8 @@ func main() {
 	mqttClient, err := mqttclient.NewClient(mqttclient.ClientConfig{
 		BrokerURL: cfg.MQTT.BrokerURL,
 		ClientID:  fmt.Sprintf("journal-trend-detect-%d", time.Now().UnixNano()),
+		Username:  cfg.MQTT.Username,
+		Password:  cfg.MQTT.Password,
 	})
 	if err != nil {
 		log.WithError(err).Fatal("Failed to connect to MQTT")
@@ -126,7 +132,7 @@ func main() {
 }
 
 // buildHumanSummary renders a multi-line text description of the trend.
-func buildHumanSummary(gravity services.GravityProfile, soulSpeed, spread float32, entryCount, windowDays int) string {
+func buildHumanSummary(gravity services.GravityProfile, soulSpeed, spread float32, trending, unexpected []string, entryCount, windowDays int) string {
 	type scored struct {
 		slug string
 		val  float32
@@ -160,9 +166,27 @@ func buildHumanSummary(gravity services.GravityProfile, soulSpeed, spread float3
 	} else if spread > 0.08 {
 		spreadLabel = "dispersed"
 	}
-	s += fmt.Sprintf("  Spread:       %.3f  (%s)", spread, spreadLabel)
+	s += fmt.Sprintf("  Spread:       %.3f  (%s)\n", spread, spreadLabel)
+
+	if len(trending) > 0 {
+		s += fmt.Sprintf("  Trending:     %s\n", joinStrings(trending, " · "))
+	}
+	if len(unexpected) > 0 {
+		s += fmt.Sprintf("  Unexpected:   %s", joinStrings(unexpected, " · "))
+	}
 
 	return s
+}
+
+func joinStrings(ss []string, sep string) string {
+	result := ""
+	for i, s := range ss {
+		if i > 0 {
+			result += sep
+		}
+		result += s
+	}
+	return result
 }
 
 func soulSpeedLabel(v float32) string {

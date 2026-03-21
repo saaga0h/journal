@@ -45,6 +45,11 @@ Key variables in `.env.dev`:
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model — must produce 768-dim vectors |
 | `ASSOCIATION_THRESHOLD` | `0.3` | Minimum similarity for entry-standing associations |
 | `BRIEF_RELEVANCE_THRESHOLD` | `0.6` | Minimum similarity for brief entry relevance |
+| `WEBDAV_URL` | — | WebDAV server URL (e.g., `https://nextcloud.example.com/remote.php/webdav/`) |
+| `WEBDAV_USERNAME` | — | WebDAV username |
+| `WEBDAV_PASSWORD` | — | WebDAV password |
+| `WEBDAV_STANDING_PATH` | `/standing/` | WebDAV directory path for standing documents |
+| `WEBDAV_ENTRIES_PATH` | `/entries/` | WebDAV directory path for freeform entries |
 
 ## Binaries
 
@@ -52,6 +57,8 @@ Key variables in `.env.dev`:
 |---|---|
 | `entry-ingest` | Long-running service — listens on MQTT, ingests journal entries, computes embeddings, associates with standing documents |
 | `ingest-standing` | CLI — ingest a standing document from a markdown file |
+| `ingest-webdav-standing` | CLI — fetch standing documents from a WebDAV server, skip unchanged (content hash), embed and store |
+| `ingest-webdav-entries` | CLI — fetch freeform markdown entries from a WebDAV server, skip unchanged, parse date from content, run concept extraction, publish to MQTT |
 | `reembed` | CLI — re-embed entries that have null embeddings (run when Ollama was previously unavailable) |
 | `concept-extract` | CLI — extract engineering concepts from recent commits in a repository |
 | `trend-detect` | CLI — compute gravity profile (per-standing-doc attraction) and soul speed, publish to MQTT |
@@ -194,3 +201,27 @@ Each journal entry is positioned in an N-dimensional space where axes are standi
 **Soul Speed**: A scalar from 0–1 measuring internal mental activity. High values (>0.65) indicate intense thinking; low values (<0.45) suggest dormant patterns. Computed separately from lateral standing-doc similarities.
 
 **Cluster Spread**: Standard deviation of all entries' multi-doc vectors. Tight cluster (<0.03) suggests convergent thinking; dispersed (>0.08) suggests exploration across multiple docs.
+
+## WebDAV Ingestion
+
+Pull markdown documents from a WebDAV server (e.g., Nextcloud, any WebDAV-compatible server). Joplin can sync notebooks via WebDAV. Both ingestors are idempotent — unchanged files (same content hash) are skipped on subsequent runs.
+
+**Standing Documents** (`ingest-webdav-standing`): Fetches `.md` files from `WEBDAV_STANDING_PATH`, extracts the title from the first `# ` heading, computes embeddings, and stores as standing documents. Slug is derived from filename (lowercase, spaces/underscores → hyphens).
+
+**Freeform Entries** (`ingest-webdav-entries`): Fetches `.md` files from `WEBDAV_ENTRIES_PATH`, parses date from document content (fallback to WebDAV last-modified timestamp), runs concept extraction on the content, and publishes extracted concepts to MQTT for `entry-ingest` to process.
+
+Configuration:
+- `WEBDAV_URL` — Base URL of your WebDAV server
+- `WEBDAV_USERNAME` / `WEBDAV_PASSWORD` — Authentication
+- `WEBDAV_STANDING_PATH` — Directory for standing documents (default `/standing/`)
+- `WEBDAV_ENTRIES_PATH` — Directory for freeform entries (default `/entries/`)
+
+Run:
+
+```bash
+make sync-standing                # Ingest standing docs from WebDAV + recompute associations
+make run-ingest-webdav-standing   # Ingest standing docs from WebDAV only
+make run-ingest-webdav-entries    # Ingest freeform entries from WebDAV
+```
+
+Both ingestors skip unchanged files on repeat runs, making them safe to schedule. `sync-standing` treats WebDAV as source of truth — ingest then reassociate in one step.
