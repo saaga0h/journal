@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/saaga0h/journal/internal/config"
+	"github.com/saaga0h/journal/internal/database"
 	mqttclient "github.com/saaga0h/journal/internal/mqtt"
 	"github.com/saaga0h/journal/internal/services"
 	"github.com/saaga0h/journal/pkg/logger"
@@ -22,6 +23,7 @@ func main() {
 		hours      = flag.Int("hours", 0, "how many hours back (overrides days if set)")
 		week       = flag.Bool("week", false, "extract previous calendar week (Mon-Sun UTC), overrides --days/--hours")
 		deep       = flag.Bool("deep", false, "run second pass for theoretical territory")
+		auto       = flag.Bool("auto", false, "automatically detect extraction range from last ingested entry")
 		maxDiff    = flag.Int("max-diff", 12000, "max bytes of diff content to send")
 		configPath = flag.String("config", "", "path to .env configuration file")
 	)
@@ -33,14 +35,48 @@ func main() {
 		log.Fatal("--repo is required")
 	}
 
+	if *auto {
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "days" || f.Name == "hours" || f.Name == "week" {
+				log.Fatal("--auto is mutually exclusive with --days, --hours, and --week")
+			}
+		})
+	}
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to load configuration")
 	}
 	logger.SetLevel(cfg.Log.Level)
 
+	repoName := filepath.Base(*repoPath)
+
 	var since, until time.Time
-	if *week {
+	if *auto {
+		pool, err := database.Connect(cfg.Database)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to connect to database")
+		}
+		defer pool.Close()
+		if err := database.RunMigrations(pool); err != nil {
+			log.WithError(err).Fatal("Failed to run migrations")
+		}
+		anchor, err := database.GetLastEntryTimestamp(pool, repoName)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to query last entry timestamp")
+		}
+		if anchor != nil {
+			since = *anchor
+			log.WithField("anchor", since.Format(time.RFC3339)).Info("Auto range: anchoring from last entry")
+		} else {
+			since, err = services.GetFirstCommitTime(*repoPath)
+			if err != nil {
+				log.WithError(err).Fatal("No entries found and could not determine first commit")
+			}
+			log.WithField("first_commit", since.Format(time.RFC3339)).Info("Auto range: no entries found, backfilling from first commit")
+		}
+		until = time.Now().UTC()
+	} else if *week {
 		now := time.Now().UTC()
 		weekday := int(now.Weekday())
 		if weekday == 0 {
@@ -57,8 +93,6 @@ func main() {
 		since = time.Now().AddDate(0, 0, -*days)
 		until = time.Now()
 	}
-
-	repoName := filepath.Base(*repoPath)
 
 	ollama := services.NewOllama(cfg.Ollama)
 	ollama.SetLogger(log)

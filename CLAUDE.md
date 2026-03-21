@@ -28,6 +28,10 @@ make mqtt-sub           # Watch journal/# MQTT traffic
 - **Spread/Soul Speed labels are guesses** — thresholds in `buildHumanSummary` and `soulSpeedLabel` in `cmd/trend-detect/main.go` are empirical starting points.
 - **PROPFIND Depth header required** — without `Depth: 1`, most WebDAV servers return only the collection itself and no children. The `internal/webdav/client.go` `List` method sets this, but any new PROPFIND call must include it explicitly.
 - **`UpsertWebDAVState` timing** — must be called only after a successful MQTT publish, not after content extraction. Calling it earlier marks a file as ingested even if the publish failed.
+- **`InsertEntry` upsert excludes `annotation` and `created_at` intentionally** — `annotation` is user-written and must survive re-extraction; `created_at` must reflect first ingestion. Do not add them to the `DO UPDATE SET` list.
+- **Partial index predicate must match exactly in `ON CONFLICT`** — `ON CONFLICT (repository, since_timestamp) WHERE since_timestamp IS NOT NULL` — Postgres requires the predicate wording to be a textual match of the index definition. Any new `ON CONFLICT` against this index must use the identical clause.
+- **NULL `since_timestamp` rows are not protected by the upsert** — pre-004 entries with NULL `since_timestamp` are exempt from the unique constraint. Two rows with NULL `since_timestamp` for the same repo do not conflict. This is intentional; all entries from `concept-extract` always set `since_timestamp`.
+- **`flag.Visit` not `flag.VisitAll` for mutual exclusion** — `--days` defaults to 1, so checking `*days != 1` would incorrectly block `--days 1`. `flag.Visit` iterates only flags explicitly set on the command line.
 
 ## Minerva Integration Protocol
 

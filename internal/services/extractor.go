@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -112,6 +113,28 @@ func splitLines(s string) []string {
 		lines = append(lines, s[start:])
 	}
 	return lines
+}
+
+// GetFirstCommitTime returns the author date of the oldest commit in the repository.
+// Returns an error if the repository has no commits.
+func GetFirstCommitTime(repoPath string) (time.Time, error) {
+	cmd := exec.Command("git", "-C", repoPath, "log", "--reverse", "--format=%aI")
+	out, err := cmd.Output()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("git log (first commit) failed: %w", err)
+	}
+
+	lines := splitLines(string(out))
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return time.Time{}, fmt.Errorf("no commits found in repository %s", repoPath)
+	}
+
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(lines[0]))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse first commit date %q: %w", lines[0], err)
+	}
+
+	return t, nil
 }
 
 // GetCommitMessages returns all commit messages in the time range, oldest first.

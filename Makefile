@@ -10,7 +10,7 @@ MQTT_BROKER ?= tcp://localhost:1884
         setup-dev infra infra-down migrate psql mqtt-sub \
         run-ingest-standing ingest-all-standing list-standing \
         run-entry-ingest run-reembed run-reassociate list-entries list-associations \
-        run-concept-extract extract \
+        run-concept-extract extract extract-auto \
         run-ingest-webdav-standing run-ingest-webdav-entries sync-standing
 
 # Default target
@@ -172,6 +172,9 @@ extract: build-primitives ## Extract concepts for the previous calendar week (RE
 
 extract-days: build-primitives ## Extract concepts for the last N days (REPO=path DAYS=7)
 	$(BUILD_DIR)/concept-extract --repo $(REPO) --days $(or $(DAYS),1) --deep --config .env.dev
+
+extract-auto: build-primitives ## Auto-detect range and extract (REPO=path, optional: DEEP=true)
+	$(BUILD_DIR)/concept-extract --repo $(REPO) --auto $(if $(DEEP),--deep,) --config .env.dev
 
 # ── Trend detection ───────────────────────────────────────────────────────────
 

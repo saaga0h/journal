@@ -11,6 +11,23 @@ import (
 	pgvector "github.com/pgvector/pgvector-go"
 )
 
+// GetLastEntryTimestamp returns the maximum until_timestamp for entries in the given repository.
+// Returns nil if no entries exist for the repository or all existing entries have NULL until_timestamp.
+func GetLastEntryTimestamp(pool *pgxpool.Pool, repository string) (*time.Time, error) {
+	ctx := context.Background()
+
+	var ts *time.Time
+	err := pool.QueryRow(ctx,
+		`SELECT MAX(until_timestamp) FROM journal_entries WHERE repository = $1`,
+		repository,
+	).Scan(&ts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last entry timestamp for %s: %w", repository, err)
+	}
+
+	return ts, nil
+}
+
 // JournalEntry represents a timestamped record of concept extractor output.
 type JournalEntry struct {
 	ID                   int64
@@ -65,6 +82,18 @@ func InsertEntry(pool *pgxpool.Pool, entry *JournalEntry) (int64, error) {
 		 (repository, since_timestamp, until_timestamp, extractor_version, engineering, theoretical,
 		  summary, concepts, theoretical_territory, annotation, embedding, git_input, raw_output)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 ON CONFLICT (repository, since_timestamp) WHERE since_timestamp IS NOT NULL
+		 DO UPDATE SET
+		     until_timestamp       = EXCLUDED.until_timestamp,
+		     extractor_version     = EXCLUDED.extractor_version,
+		     engineering           = EXCLUDED.engineering,
+		     theoretical           = EXCLUDED.theoretical,
+		     summary               = EXCLUDED.summary,
+		     concepts              = EXCLUDED.concepts,
+		     theoretical_territory = EXCLUDED.theoretical_territory,
+		     embedding             = EXCLUDED.embedding,
+		     git_input             = EXCLUDED.git_input,
+		     raw_output            = EXCLUDED.raw_output
 		 RETURNING id`,
 		entry.Repository, entry.SinceTimestamp, entry.UntilTimestamp, entry.ExtractorVersion,
 		entry.Engineering, entry.Theoretical,
