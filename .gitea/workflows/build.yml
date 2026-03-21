@@ -1,16 +1,19 @@
-# Build and publish all Journal binaries on tagged releases.
-# Trigger: push a tag like v0.1.0
+# Build and publish all Journal binaries on every push to main.
+# Binaries are uploaded to a fixed "latest" release, overwriting previous ones.
+# This means JOURNAL_VERSION stays "latest" permanently during development.
+#
+# Once the pipeline is stable, switch to tag-based releases by changing the
+# trigger to `tags: ['v*']` and managing JOURNAL_VERSION manually.
 #
 # Prerequisites:
-#   - JOURNAL_RELEASE_TOKEN secret set in repo settings (token with repository read+write)
-#   - Self-hosted runner with Go 1.26+ available, OR use actions/setup-go
+#   - JOURNAL_RELEASE_TOKEN secret set in repo settings (repository read+write)
 
 name: build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
   build:
@@ -23,19 +26,32 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.26'
+          go-version: '1.24'
 
       - name: Build all binaries
         run: make build-primitives
 
-      - name: Create release
+      - name: Ensure latest release exists
         run: |
           curl -fsSL -X POST \
             -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d "{\"tag_name\": \"${{ github.ref_name }}\", \"name\": \"${{ github.ref_name }}\", \"body\": \"Release ${{ github.ref_name }}\"}" \
+            -d '{"tag_name":"latest","name":"latest","body":"Latest build from main"}' \
             "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases" \
-          || true  # ignore error if release already exists
+          || true
+
+      - name: Delete existing assets
+        run: |
+          # Fetch asset IDs for the latest release and delete them so we can re-upload
+          assets=$(curl -fsSL \
+            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest/assets" \
+            | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
+          for id in $assets; do
+            curl -fsSL -X DELETE \
+              -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/assets/${id}"
+          done
 
       - name: Upload binaries
         run: |
@@ -44,5 +60,5 @@ jobs:
             curl -fsSL -X POST \
               -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
               -F "attachment=@${binary}" \
-              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}/assets"
+              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest/assets"
           done
