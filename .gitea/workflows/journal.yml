@@ -52,5 +52,6 @@ jobs:
         run: |
           /tmp/concept-extract \
             --repo "${{ github.workspace }}" \
+            --source "${{ github.event.repository.name }}" \
             --auto \
             --deep

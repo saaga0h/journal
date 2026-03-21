@@ -19,6 +19,7 @@ import (
 func main() {
 	var (
 		repoPath   = flag.String("repo", "", "path to git repo (required)")
+		source     = flag.String("source", "", "source name override (defaults to repo directory name)")
 		days       = flag.Int("days", 1, "how many days back to look")
 		hours      = flag.Int("hours", 0, "how many hours back (overrides days if set)")
 		week       = flag.Bool("week", false, "extract previous calendar week (Mon-Sun UTC), overrides --days/--hours")
@@ -50,6 +51,9 @@ func main() {
 	logger.SetLevel(cfg.Log.Level)
 
 	repoName := filepath.Base(*repoPath)
+	if *source != "" {
+		repoName = *source
+	}
 
 	var since, until time.Time
 	if *auto {
