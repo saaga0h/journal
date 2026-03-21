@@ -53,10 +53,15 @@ jobs:
 
       - name: Upload binaries
         run: |
+          release_id=$(curl -sSL \
+            -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
+            "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest" \
+            | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+          echo "Uploading to release ID: ${release_id}"
           for binary in build/*; do
             echo "Uploading ${binary}..."
             curl -fsSL -X POST \
               -H "Authorization: token ${{ secrets.JOURNAL_RELEASE_TOKEN }}" \
               -F "attachment=@${binary}" \
-              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/tags/latest/assets"
+              "https://git.home.federation.fi/api/v1/repos/${{ github.repository }}/releases/${release_id}/assets"
           done
