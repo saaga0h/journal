@@ -12,7 +12,7 @@ MQTT_BROKER ?= tcp://localhost:1884
         run-entry-ingest run-reembed run-reassociate list-entries list-associations \
         run-concept-extract extract extract-auto \
         run-ingest-webdav-standing run-ingest-webdav-entries sync-standing \
-        run-brief-trigger
+        run-brief-trigger run-space-viz
 
 # Default target
 help: ## Show this help message
@@ -41,6 +41,7 @@ build-primitives: ## Build all primitive binaries
 	go build -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
 	go build -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
 	go build -o $(BUILD_DIR)/brief-trigger ./cmd/brief-trigger/
+	go build -o $(BUILD_DIR)/space-viz ./cmd/space-viz/
 	@echo "Done. Binaries in $(BUILD_DIR)/"
 
 # Build with debug symbols
@@ -58,6 +59,7 @@ build-dev: ## Build all primitives with debug symbols
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-standing ./cmd/ingest-webdav-standing/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/ingest-webdav-entries ./cmd/ingest-webdav-entries/
 	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/brief-trigger ./cmd/brief-trigger/
+	go build -gcflags="all=-N -l" -o $(BUILD_DIR)/space-viz ./cmd/space-viz/
 	@echo "Done."
 
 # Tests
@@ -198,6 +200,9 @@ trigger-brief: ## Trigger morning brief immediately (development)
 
 run-brief-trigger: build-primitives ## Run brief-trigger binary (publishes MQTT trigger, uses .env.dev)
 	$(BUILD_DIR)/brief-trigger -config .env.dev
+
+run-space-viz: build-primitives ## Launch space-viz visualization server
+	$(BUILD_DIR)/space-viz --config .env.dev --open
 
 # CI simulation
 ci: deps fmt test build-primitives ## Full CI pipeline

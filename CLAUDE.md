@@ -21,6 +21,7 @@ make mqtt-sub           # Watch journal/# MQTT traffic
 ## Constraints
 
 - **Ports are offset** — Postgres: 5433 (not 5432), Mosquitto: 1884 (not 1883). Avoid conflict with Minerva.
+- **Port 8765 is used by `space-viz`** — the interactive visualization server. Avoid using this port for future services.
 - **Ollama runs on host**, not Docker. `OLLAMA_BASE_URL` must point to host. Embed endpoint is `/api/embed` with `"input"` field (not `/api/embeddings`, not `"prompt"`). Chat endpoint is `/api/chat` with `messages` array.
 - **Ollama mutex** — serialize all embedding calls in long-running services. Concurrent requests time out.
 - **Paho payload copy** — MQTT handlers must copy payload before goroutines: `data := make([]byte, len(payload)); copy(data, payload)`. Paho reuses the buffer.

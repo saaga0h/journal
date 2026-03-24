@@ -66,6 +66,7 @@ Key variables in `.env.dev`:
 | `trend-detect` | CLI — compute gravity profile (per-standing-doc attraction) and soul speed, publish to MQTT |
 | `brief-assemble` | Long-running service — MQTT-triggered brief assembler, queries Minerva with trend vector, surfaces one article or silence |
 | `brief-feedback` | CLI — record read/skip feedback for a brief session (`--session-id`, `--action read\|skip`) |
+| `space-viz` | Web server — interactive 3D visualization of entries in standing-doc space (X/Z: UMAP-reduced semantic clusters, Y: time, color: soul-speed) |
 
 ## Running in Dev
 
@@ -108,12 +109,17 @@ make run-trend-detect
 make trend-detect-dry
 ```
 
-Visualize entries in standing-doc space:
+Visualize entries in standing-doc space (interactive 3D):
 
 ```bash
-# 3D scatter plot (PCA-reduced lateral dims, soul speed on Z axis)
-python3 tools/visualize_space.py
+# Build and open browser (macOS)
+make run-space-viz
+
+# Or run directly with custom flags
+./build/space-viz --config .env.dev --days 90 --port 8765 --open
 ```
+
+Flags: `--port` (default 8765), `--days` (default lookback window in days), `--open` (macOS auto-browser), `--config` (path to .env file)
 
 Assemble and manage morning briefs:
 
