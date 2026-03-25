@@ -9,6 +9,10 @@ job "journal-brief-trigger" {
   datacenters = ["the-collective"]
   type        = "batch"
 
+  meta {
+    artifact_base = "ARTIFACT_BASE_PLACEHOLDER"
+  }
+
   constraint {
     attribute = "${meta.gpu}"
     operator  = "!="
@@ -39,7 +43,7 @@ job "journal-brief-trigger" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/brief-trigger"
+        source      = "${NOMAD_META_artifact_base}/${attr.cpu.arch}/brief-trigger"
         destination = "local/brief-trigger"
         mode        = "file"
       }

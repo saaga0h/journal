@@ -9,6 +9,10 @@ job "journal-ingest-standing" {
   datacenters = ["the-collective"]
   type        = "batch"
 
+  meta {
+    artifact_base = "ARTIFACT_BASE_PLACEHOLDER"
+  }
+
   constraint {
     attribute = "${meta.gpu}"
     operator  = "!="
@@ -42,13 +46,13 @@ job "journal-ingest-standing" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/ingest-webdav-standing"
+        source      = "${NOMAD_META_artifact_base}/${attr.cpu.arch}/ingest-webdav-standing"
         destination = "local/ingest-webdav-standing"
         mode        = "file"
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/reassociate"
+        source      = "${NOMAD_META_artifact_base}/${attr.cpu.arch}/reassociate"
         destination = "local/reassociate"
         mode        = "file"
       }

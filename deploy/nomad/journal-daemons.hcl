@@ -16,6 +16,10 @@ job "journal-daemons" {
   datacenters = ["the-collective"]
   type        = "service"
 
+  meta {
+    artifact_base = "ARTIFACT_BASE_PLACEHOLDER"
+  }
+
   constraint {
     attribute = "${meta.gpu}"
     operator  = "!="
@@ -44,7 +48,7 @@ job "journal-daemons" {
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/entry-ingest"
+        source      = "${NOMAD_META_artifact_base}/${attr.cpu.arch}/entry-ingest"
         destination = "local/entry-ingest"
         mode        = "file"
       }
@@ -107,7 +111,7 @@ EOT
       }
 
       artifact {
-        source      = "http://192.168.10.50:8080/api/binaries/journal/${attr.cpu.arch}/brief-assemble"
+        source      = "${NOMAD_META_artifact_base}/${attr.cpu.arch}/brief-assemble"
         destination = "local/brief-assemble"
         mode        = "file"
       }
