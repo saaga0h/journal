@@ -1,6 +1,6 @@
 # Build and publish all Journal binaries on every push to main.
 # Binaries are copied directly to the nginx artifact server on the packer host.
-# Served at: http://192.168.10.50:8080/api/binaries/journal/<arch>/<binary>
+# Served at: packer server
 #
 # Prerequisites:
 #   - Runner "packer" is the same host as the nginx artifact server
@@ -46,8 +46,6 @@ jobs:
           NOMAD_ADDR: ${{ vars.NOMAD_ADDR }}
           ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
         run: |
-          nomad job run deploy/nomad/journal-daemons.hcl
-          nomad job run deploy/nomad/journal-ingest-standing.hcl
-          nomad job run deploy/nomad/journal-ingest-entries.hcl
-          nomad job run deploy/nomad/journal-trend-detect.hcl
-          nomad job run deploy/nomad/journal-brief-trigger.hcl
+          for hcl in deploy/nomad/*.hcl; do
+            envsubst < "$hcl" | nomad job run -
+          done
