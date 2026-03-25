@@ -2,9 +2,11 @@
 // X/Z: UMAP projection of lateral standing-doc association coords
 // Y:   SinceTimestamp normalized to [0,1] (older=bottom, newer=top)
 // Color: soul-speed similarity (blue=low, red=high) or source repo toggle
+// Focus: select a standing doc to fade out unrelated entries (fog-by-similarity)
 
 const SOUL_SPEED_SLUG = 'soul-speed'; // must match Go SoulSpeedSlug = "soul-speed"
 const UMAP_SEED = 42;
+const BG_COLOR = new THREE.Color(0x0a0a0f); // must match scene.background
 
 const state = {
   points:       [],    // EntrySpacePoint[] from /api/points (PascalCase fields)
@@ -12,8 +14,33 @@ const state = {
   lateralSlugs: [],    // all slugs except soul-speed, sorted
   positions:    [],    // [{x, y, z}] Three.js coords after UMAP + time mapping
   colorMode:    'soul-speed', // 'soul-speed' | 'source'
+  focusSlug:    null,  // standing doc slug currently in focus, or null
   days:         90,
 };
+
+// ── Distinct source palette ───────────────────────────────────────────────────
+const SOURCE_PALETTE = [
+  0x4fc3f7, // sky blue
+  0xf06292, // rose
+  0x81c784, // sage green
+  0xffb74d, // amber
+  0xce93d8, // lavender
+  0x4dd0e1, // cyan
+  0xff8a65, // coral
+  0xa5d6a7, // mint
+  0xf48fb1, // pink
+  0x90caf9, // periwinkle
+];
+
+let sourceColorMap = {};
+
+function buildSourceColorMap() {
+  const sources = [...new Set(state.points.map(p => p.Source))].sort((a, b) => a.localeCompare(b));
+  sourceColorMap = {};
+  sources.forEach((src, i) => {
+    sourceColorMap[src] = new THREE.Color(SOURCE_PALETTE[i % SOURCE_PALETTE.length]);
+  });
+}
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -25,7 +52,7 @@ async function fetchData(days) {
   state.points   = await pRes.json();
   state.standing = await sRes.json();
 
-  const allSlugs = state.standing.map(s => s.slug).sort();
+  const allSlugs = state.standing.map(s => s.slug).sort((a, b) => a.localeCompare(b));
   state.lateralSlugs = allSlugs.filter(s => s !== SOUL_SPEED_SLUG);
 }
 
@@ -34,7 +61,7 @@ async function fetchData(days) {
 function seededRandom(seed) {
   let s = seed;
   return function() {
-    s |= 0; s = s + 0x6D2B79F5 | 0;
+    s = Math.trunc(s + 0x6D2B79F5);
     let t = Math.imul(s ^ s >>> 15, 1 | s);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
@@ -45,9 +72,7 @@ function seededRandom(seed) {
 
 function buildMatrix() {
   return state.points.map(pt =>
-    state.lateralSlugs.map(slug =>
-      (pt.Coords && pt.Coords[slug]) ? pt.Coords[slug] : 0.0
-    )
+    state.lateralSlugs.map(slug => pt.Coords?.[slug] ?? 0)
   );
 }
 
@@ -59,13 +84,10 @@ function runUMAP(matrix) {
     minDist: 0.1,
     random: seededRandom(UMAP_SEED),
   });
-  return umap.fit(matrix); // returns number[][]
+  return umap.fit(matrix);
 }
 
 // ── Position computation ──────────────────────────────────────────────────────
-// UMAP-1 → Three.js X
-// Time   → Three.js Y (up, Y-up convention)
-// UMAP-2 → Three.js Z
 
 function computePositions(umapResult) {
   const times = state.points.map(pt => new Date(pt.SinceTimestamp).getTime());
@@ -75,8 +97,10 @@ function computePositions(umapResult) {
 
   let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
   for (const [x, y] of umapResult) {
-    if (x < xMin) xMin = x; if (x > xMax) xMax = x;
-    if (y < yMin) yMin = y; if (y > yMax) yMax = y;
+    if (x < xMin) { xMin = x; }
+    if (x > xMax) { xMax = x; }
+    if (y < yMin) { yMin = y; }
+    if (y > yMax) { yMax = y; }
   }
   const xRange = xMax - xMin || 1;
   const yRange = yMax - yMin || 1;
@@ -92,22 +116,33 @@ function computePositions(umapResult) {
 // ── Color functions ───────────────────────────────────────────────────────────
 
 function soulSpeedColor(pt) {
-  const ss = (pt.Coords && pt.Coords[SOUL_SPEED_SLUG]) ? pt.Coords[SOUL_SPEED_SLUG] : 0;
-  const hue = Math.round(240 * (1 - ss)); // blue (240) = low, red (0) = high
+  const ss = pt.Coords?.[SOUL_SPEED_SLUG] ?? 0;
+  const hue = Math.round(240 * (1 - ss));
   return new THREE.Color(`hsl(${hue}, 80%, 55%)`);
 }
 
 function sourceColor(pt) {
-  let hash = 0;
-  for (let i = 0; i < pt.Source.length; i++) {
-    hash = ((hash << 5) - hash) + pt.Source.charCodeAt(i);
-    hash |= 0;
-  }
-  return new THREE.Color(`hsl(${Math.abs(hash) % 360}, 70%, 55%)`);
+  return sourceColorMap[pt.Source] || new THREE.Color(0xffffff);
 }
 
 function getColor(pt) {
   return state.colorMode === 'soul-speed' ? soulSpeedColor(pt) : sourceColor(pt);
+}
+
+// ── Focus fog ────────────────────────────────────────────────────────────────
+// When a doc is focused, lerp each point's color toward the background based
+// on how weakly it associates with that doc. High similarity = full color.
+// Low similarity = fades toward near-black (background).
+// fog strength: 0 = full color, 1 = fully faded to background
+
+const FOG_MIN_ALPHA = 0.06; // dimmest a faded point gets (not fully invisible)
+
+function applyFog(baseColor, pt) {
+  if (!state.focusSlug) { return baseColor; }
+  const sim = pt.Coords?.[state.focusSlug] ?? 0;
+  // Remap sim to fog: sim=1 → no fog, sim=0 → max fog
+  const visible = Math.max(FOG_MIN_ALPHA, sim);
+  return new THREE.Color().lerpColors(BG_COLOR, baseColor, visible);
 }
 
 // ── Three.js scene ────────────────────────────────────────────────────────────
@@ -121,15 +156,15 @@ function initScene() {
   renderer.setPixelRatio(window.devicePixelRatio);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0a0f);
+  scene.background = BG_COLOR.clone();
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 22, 2); // near top-down, slight forward tilt to show depth
+  camera.position.set(0, 22, 2);
 
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.target.set(0, 5, 0); // look at mid-height of data
+  controls.target.set(0, 5, 0);
 
   raycaster = new THREE.Raycaster();
   raycaster.params.Points = { threshold: 0.25 };
@@ -144,7 +179,7 @@ function initScene() {
 // ── Point cloud ───────────────────────────────────────────────────────────────
 
 function renderPoints() {
-  if (pointCloud) scene.remove(pointCloud);
+  if (pointCloud) { scene.remove(pointCloud); }
 
   const n = state.positions.length;
   const positions = new Float32Array(n * 3);
@@ -156,7 +191,7 @@ function renderPoints() {
     positions[i * 3 + 1] = p.y;
     positions[i * 3 + 2] = p.z;
 
-    const c = getColor(state.points[i]);
+    const c = applyFog(getColor(state.points[i]), state.points[i]);
     colors[i * 3]     = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -175,12 +210,12 @@ function renderPoints() {
 
 function addAxisArrows() {
   const len = 6, hLen = 0.4, hW = 0.15, col = 0x444444;
-  scene.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(-5,0,0), len,      col, hLen, hW));
-  scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0),  len*1.5,  col, hLen, hW));
-  scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-5), len,      col, hLen, hW));
-  addLabel('UMAP-1', 2,          -0.8,        0);
-  addLabel('Time ↑', -0.8,       len*1.5+0.5, 0);
-  addLabel('UMAP-2', 0,          -0.8,        2);
+  scene.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(-5,0,0), len,     col, hLen, hW));
+  scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0),  len*1.5, col, hLen, hW));
+  scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-5), len,     col, hLen, hW));
+  addLabel('UMAP-1', 2,        -0.8,        0);
+  addLabel('Time ↑', -0.8,     len*1.5+0.5, 0);
+  addLabel('UMAP-2', 0,        -0.8,        2);
 }
 
 function addLabel(text, x, y, z) {
@@ -196,6 +231,21 @@ function addLabel(text, x, y, z) {
   sprite.position.set(x, y, z);
   sprite.scale.set(2, 0.5, 1);
   scene.add(sprite);
+}
+
+// ── Focus dropdown ────────────────────────────────────────────────────────────
+
+function populateFocusDropdown() {
+  const sel = document.getElementById('focus-select');
+  // Clear existing options beyond the first (— none —)
+  while (sel.options.length > 1) { sel.remove(1); }
+
+  state.lateralSlugs.forEach(slug => {
+    const opt = document.createElement('option');
+    opt.value = slug;
+    opt.textContent = slug;
+    sel.appendChild(opt);
+  });
 }
 
 // ── Tooltip via raycasting ────────────────────────────────────────────────────
@@ -215,9 +265,16 @@ function onMouseMove(event) {
     const date     = pt.SinceTimestamp ? pt.SinceTimestamp.substring(0, 10) : '—';
     const concepts = (pt.Concepts || []).slice(0, 3).join(', ') || '(no concepts)';
 
+    // Show similarity to focused doc if one is selected
+    let focusLine = '';
+    if (state.focusSlug) {
+      const sim = (pt.Coords?.[state.focusSlug] ?? 0).toFixed(3);
+      focusLine = `${state.focusSlug}: ${sim}`;
+    }
+
     tip.querySelector('.source').textContent   = pt.Source;
     tip.querySelector('.date').textContent     = date;
-    tip.querySelector('.concepts').textContent = concepts;
+    tip.querySelector('.concepts').textContent = focusLine ? `${focusLine}\n${concepts}` : concepts;
     tip.style.display = 'block';
     tip.style.left    = (event.clientX + 14) + 'px';
     tip.style.top     = (event.clientY + 14) + 'px';
@@ -233,7 +290,7 @@ function initControls() {
   const daysValue = document.getElementById('days-value');
 
   slider.addEventListener('input', () => {
-    state.days = parseInt(slider.value);
+    state.days = Number.parseInt(slider.value);
     daysValue.textContent = slider.value;
   });
   slider.addEventListener('change', () => reloadAndRender());
@@ -243,7 +300,13 @@ function initControls() {
   document.getElementById('btn-color-toggle').addEventListener('click', () => {
     state.colorMode = state.colorMode === 'soul-speed' ? 'source' : 'soul-speed';
     document.getElementById('btn-color-toggle').textContent = 'Color: ' + state.colorMode;
-    renderPoints(); // re-color without recomputing UMAP
+    buildSourceColorMap();
+    renderPoints();
+  });
+
+  document.getElementById('focus-select').addEventListener('change', (e) => {
+    state.focusSlug = e.target.value || null;
+    renderPoints(); // re-color only, no UMAP recompute
   });
 }
 
@@ -261,6 +324,8 @@ async function reloadAndRender() {
     return;
   }
 
+  buildSourceColorMap();
+  populateFocusDropdown();
   const matrix     = buildMatrix();
   const umapResult = runUMAP(matrix);
   computePositions(umapResult);

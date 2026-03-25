@@ -24,6 +24,11 @@
     #controls button:hover { background: #333; }
     #controls .value { float: right; color: #eee; }
     #controls .separator { border-top: 1px solid #333; margin: 8px 0; }
+    #controls select {
+      margin-top: 6px; width: 100%; background: #181820; color: #ccc;
+      border: 1px solid #555; border-radius: 3px; padding: 3px 6px;
+      font-family: monospace; font-size: 11px; cursor: pointer;
+    }
 
     #tooltip {
       position: fixed; z-index: 20; display: none;
@@ -52,6 +57,11 @@
     <button id="btn-recompute">Recompute UMAP</button>
     <div class="separator"></div>
     <button id="btn-color-toggle">Color: soul-speed</button>
+    <div class="separator"></div>
+    <label for="focus-select">Focus doc:</label>
+    <select id="focus-select">
+      <option value="">— none —</option>
+    </select>
   </div>
 
   <div id="tooltip">
