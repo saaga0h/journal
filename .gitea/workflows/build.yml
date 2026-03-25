@@ -40,14 +40,7 @@ jobs:
           cp -f build/arm64/* /var/lib/packer-builds/binaries/journal/arm64/
           echo "Published:"
           ls -lh /var/lib/packer-builds/binaries/journal/amd64/
-      
-      - name: Debug vars
-        env:
-          ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
-        run: |
-          echo "ARTIFACT_BASE length: ${#ARTIFACT_BASE}"
-          envsubst < deploy/nomad/journal-daemons.hcl | grep artifact_base
-      
+
       - name: Deploy Nomad jobs
         env:
           NOMAD_ADDR: ${{ vars.NOMAD_ADDR }}
