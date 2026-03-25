@@ -54,5 +54,5 @@ jobs:
           ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
         run: |
           for hcl in deploy/nomad/*.hcl; do
-            envsubst < "$hcl" | nomad job run -
+            envsubst '${ARTIFACT_BASE}' < "$hcl" | nomad job run -
           done
