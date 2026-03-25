@@ -43,7 +43,7 @@ jobs:
 
       - name: Deploy Nomad jobs
         env:
-          NOMAD_ADDR: http://192.168.10.42:4646
+          ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
         run: |
           nomad job run deploy/nomad/journal-daemons.hcl
           nomad job run deploy/nomad/journal-ingest-standing.hcl
