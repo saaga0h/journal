@@ -40,6 +40,14 @@ jobs:
           cp -f build/arm64/* /var/lib/packer-builds/binaries/journal/arm64/
           echo "Published:"
           ls -lh /var/lib/packer-builds/binaries/journal/amd64/
+      
+      - name: Debug vars
+        env:
+          NOMAD_ADDR: ${{ vars.NOMAD_ADDR }}
+          ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
+        run: |
+          echo "ARTIFACT_BASE=${ARTIFACT_BASE}"
+          echo "NOMAD_ADDR=${NOMAD_ADDR}"
 
       - name: Deploy Nomad jobs
         env:
