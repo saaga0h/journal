@@ -10,7 +10,7 @@ job "journal-trend-detect" {
   type        = "batch"
 
   meta {
-    artifact_base = "ARTIFACT_BASE_PLACEHOLDER"
+    artifact_base = "${ARTIFACT_BASE}"
   }
 
   constraint {

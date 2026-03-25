@@ -17,7 +17,7 @@ job "journal-daemons" {
   type        = "service"
 
   meta {
-    artifact_base = "ARTIFACT_BASE_PLACEHOLDER"
+    artifact_base = "${ARTIFACT_BASE}"
   }
 
   constraint {
