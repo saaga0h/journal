@@ -43,6 +43,7 @@ jobs:
 
       - name: Deploy Nomad jobs
         env:
+          NOMAD_ADDR: ${{ vars.NOMAD_ADDR }}
           ARTIFACT_BASE: ${{ vars.ARTIFACT_BASE }}
         run: |
           nomad job run deploy/nomad/journal-daemons.hcl
