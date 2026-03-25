@@ -1,6 +1,8 @@
 # Build artifacts
 /build/
 /dist/
+/concepts/
+/standing-documents/
 
 # Go specific
 *.exe
@@ -60,3 +62,6 @@ vendor/
 
 # Debug files
 debug/*
+
+# Mosquitto password file (generated on host, never committed)
+deploy/mosquitto/passwd
