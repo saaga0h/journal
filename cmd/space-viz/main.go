@@ -130,7 +130,7 @@ func main() {
 		var chunkResults []chunkResult
 
 		for i, chunk := range chunks {
-			embedText := services.TruncateForEmbed(doc.Title+": "+chunk, 6000)
+			embedText := services.TruncateForEmbed(doc.Title+": "+chunk, 24000)
 			ollamaMu.Lock()
 			emb, embErr := ollama.Embed(embedText)
 			ollamaMu.Unlock()

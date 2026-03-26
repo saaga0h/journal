@@ -90,6 +90,7 @@ func GetCurrentStandingDocument(pool *pgxpool.Pool, slug string) (*StandingDocum
 	ctx := context.Background()
 	doc := &StandingDocument{}
 
+	var embedding *pgvector.Vector
 	err := pool.QueryRow(ctx,
 		`SELECT id, slug, title, content, embedding, version, source_path, created_at
 		 FROM standing_documents
@@ -97,9 +98,12 @@ func GetCurrentStandingDocument(pool *pgxpool.Pool, slug string) (*StandingDocum
 		 ORDER BY version DESC
 		 LIMIT 1`,
 		slug,
-	).Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &doc.Embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt)
+	).Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get standing document %s: %w", slug, err)
+	}
+	if embedding != nil {
+		doc.Embedding = *embedding
 	}
 
 	return doc, nil
@@ -110,14 +114,18 @@ func GetStandingDocumentVersion(pool *pgxpool.Pool, slug string, version int) (*
 	ctx := context.Background()
 	doc := &StandingDocument{}
 
+	var embedding *pgvector.Vector
 	err := pool.QueryRow(ctx,
 		`SELECT id, slug, title, content, embedding, version, source_path, created_at
 		 FROM standing_documents
 		 WHERE slug = $1 AND version = $2`,
 		slug, version,
-	).Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &doc.Embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt)
+	).Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get standing document %s v%d: %w", slug, version, err)
+	}
+	if embedding != nil {
+		doc.Embedding = *embedding
 	}
 
 	return doc, nil
@@ -141,8 +149,12 @@ func ListCurrentStandingDocuments(pool *pgxpool.Pool) ([]StandingDocument, error
 	var docs []StandingDocument
 	for rows.Next() {
 		var doc StandingDocument
-		if err := rows.Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &doc.Embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt); err != nil {
+		var embedding *pgvector.Vector
+		if err := rows.Scan(&doc.ID, &doc.Slug, &doc.Title, &doc.Content, &embedding, &doc.Version, &doc.SourcePath, &doc.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan standing document: %w", err)
+		}
+		if embedding != nil {
+			doc.Embedding = *embedding
 		}
 		docs = append(docs, doc)
 	}

@@ -157,7 +157,7 @@ list-entries: ## List recent journal entries
 		"SELECT id, source as entry, LEFT(summary, 60) as summary, \
 		 CASE WHEN embedding IS NOT NULL THEN 'yes' ELSE 'no' END as embedded, \
 		 created_at \
-		 FROM journal_entries ORDER BY created_at DESC LIMIT 20;"
+		 FROM journal_entries ORDER BY created_at DESC LIMIT 200;"
 
 list-associations: ## List entry-standing associations
 	@docker exec journal_postgres psql -U journal -d journal -c \

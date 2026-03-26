@@ -103,7 +103,7 @@ func Load(configPath string) (*Config, error) {
 		},
 		Ollama: OllamaConfig{
 			BaseURL:    getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
-			EmbedModel: getEnv("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
+			EmbedModel: getEnv("OLLAMA_EMBED_MODEL", "qwen3-embedding:8b"),
 			ChatModel:  getEnv("OLLAMA_CHAT_MODEL", "qwen2.5:7b"),
 			ChatNumCtx: getEnvInt("OLLAMA_CHAT_NUM_CTX", 32768),
 			Timeout:    getEnvInt("OLLAMA_TIMEOUT", 60),

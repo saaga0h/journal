@@ -10,11 +10,11 @@ MQTT-native, Postgres-backed with pgvector, built in Go.
 
 - Go 1.21+
 - Docker + Docker Compose
-- [Ollama](https://ollama.com) running on the host with `nomic-embed-text` pulled
+- [Ollama](https://ollama.com) running on the host with `qwen3-embedding:8b` pulled
 - `mosquitto_sub` (optional, for MQTT debugging)
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull qwen3-embedding:8b
 ```
 
 ## Setup
@@ -44,7 +44,7 @@ Key variables in `.env.dev`:
 | `DB_HOST` / `DB_PORT` | `localhost:5433` | Postgres (offset from 5432 to avoid conflicts) |
 | `MQTT_BROKER_URL` | `tcp://localhost:1884` | Mosquitto (offset from 1883) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama on host (not in Docker) |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model — must produce 768-dim vectors |
+| `OLLAMA_EMBED_MODEL` | `qwen3-embedding:8b` | Embedding model — must produce 4096-dim vectors |
 | `ASSOCIATION_THRESHOLD` | `0.3` | Minimum similarity for entry-standing associations |
 | `BRIEF_RELEVANCE_THRESHOLD` | `0.6` | Minimum similarity for brief entry relevance |
 | `WEBDAV_URL` | — | WebDAV server URL (e.g., `https://nextcloud.example.com/remote.php/webdav/`) |

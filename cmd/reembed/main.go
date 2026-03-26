@@ -14,6 +14,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "Path to .env configuration file")
+	force := flag.Bool("force", false, "re-embed all entries, not just those without embeddings")
 	flag.Parse()
 
 	log := logger.New()
@@ -50,18 +51,30 @@ func main() {
 
 	threshold := float32(cfg.AssociationThreshold)
 
-	// Find entries without embeddings
-	entries, err := database.GetEntriesWithoutEmbedding(pool)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to query entries without embeddings")
+	// Find entries to re-embed
+	var entries []database.JournalEntry
+	if *force {
+		entries, err = database.ListEntries(pool, database.ListEntriesOpts{Limit: 10000})
+		if err != nil {
+			log.WithError(err).Fatal("Failed to query all entries")
+		}
+	} else {
+		entries, err = database.GetEntriesWithoutEmbedding(pool)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to query entries without embeddings")
+		}
 	}
 
 	if len(entries) == 0 {
-		log.Info("No entries without embeddings found")
+		log.Info("No entries to re-embed")
 		return
 	}
 
-	log.WithField("count", len(entries)).Info("Found entries without embeddings")
+	mode := "missing"
+	if *force {
+		mode = "force"
+	}
+	log.WithFields(logrus.Fields{"count": len(entries), "mode": mode}).Info("Found entries to re-embed")
 
 	// Fetch standing document embeddings once
 	standings, err := database.GetAllCurrentEmbeddings(pool)
@@ -86,6 +99,11 @@ func main() {
 		if err := database.UpdateEmbedding(pool, entry.ID, pgvector.NewVector(embedding)); err != nil {
 			log.WithError(err).WithField("entry_id", entry.ID).Error("Failed to update embedding")
 			continue
+		}
+
+		// Clear old associations before recomputing
+		if err := database.DeleteEntryStandingAssociations(pool, entry.ID); err != nil {
+			log.WithError(err).WithField("entry_id", entry.ID).Warn("Failed to delete old associations")
 		}
 
 		// Compute associations

@@ -25,7 +25,7 @@ make mqtt-sub           # Watch journal/# MQTT traffic
 - **Ollama runs on host**, not Docker. `OLLAMA_BASE_URL` must point to host. Embed endpoint is `/api/embed` with `"input"` field (not `/api/embeddings`, not `"prompt"`). Chat endpoint is `/api/chat` with `messages` array.
 - **Ollama mutex** — serialize all embedding calls in long-running services. Concurrent requests time out.
 - **Paho payload copy** — MQTT handlers must copy payload before goroutines: `data := make([]byte, len(payload)); copy(data, payload)`. Paho reuses the buffer.
-- **pgvector dimension is 768** — matches nomic-embed-text. Changing model requires migrating all vector columns.
+- **pgvector dimension is 4096** — matches qwen3-embedding:8b. Changing model requires migrating all vector columns.
 - **Migrations auto-run on service startup** — files in `internal/database/migrations/` must be numbered sequentially.
 - **Standing doc slugs are stable** — derived from filename. Renaming creates a new slug (new doc), not a new version.
 - **`until_timestamp` is `*time.Time`** — NULL for pre-migration-004 entries. Guard with `.IsZero()` before storing.

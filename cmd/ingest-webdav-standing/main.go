@@ -114,7 +114,7 @@ func main() {
 			docTitle = docSlug
 		}
 
-		embedding, err := ollama.Embed(services.TruncateForEmbed(string(content), 6000))
+		embedding, err := ollama.Embed(services.TruncateForEmbed(string(content), 24000))
 		if err != nil {
 			log.WithError(err).Warn("Failed to compute embedding — skipping")
 			failed++

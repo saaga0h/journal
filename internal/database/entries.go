@@ -485,11 +485,15 @@ func scanEntries(rows pgx.Rows) ([]JournalEntry, error) {
 	for rows.Next() {
 		var e JournalEntry
 		var gitInput *string
+		var embedding *pgvector.Vector
 		if err := rows.Scan(&e.ID, &e.Source, &e.SinceTimestamp, &e.UntilTimestamp,
 			&e.ExtractorVersion,
 			&e.Engineering, &e.Theoretical, &e.Summary, &e.Concepts, &e.TheoreticalTerritory,
-			&e.Annotation, &e.Embedding, &gitInput, &e.RawOutput, &e.CreatedAt); err != nil {
+			&e.Annotation, &embedding, &gitInput, &e.RawOutput, &e.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan journal entry: %w", err)
+		}
+		if embedding != nil {
+			e.Embedding = *embedding
 		}
 		if gitInput != nil {
 			e.GitInput = *gitInput
