@@ -147,6 +147,335 @@ function applyFog(baseColor, pt) {
 
 // ── Three.js scene ────────────────────────────────────────────────────────────
 
+let activeTab = 'space'; // 'space' | 'manifold'
+
+// ── Manifold state ──────────────────────────────────────────────────────────
+
+const MANIFOLD_HULL_COLOR = 0x4fc3f7;
+const MANIFOLD_CHUNK_COLOR = 0x6ad0f7; // desaturated surface blue — blends with hull
+
+const mf = {
+  slug:       null,
+  title:      '',
+  days:       90,
+  chunks:     [],   // {index, text, position: {x,y,z}, embedding}
+  entries:    [],   // {entry_id, source, since_timestamp, concepts, position: {x,y,z}}
+  hullMesh:   null,
+  wireframe:  null,
+  entryCloud: null,
+  chunkCloud: null,
+};
+
+function clearManifoldScene() {
+  [mf.hullMesh, mf.wireframe, mf.entryCloud, mf.chunkCloud].forEach(obj => {
+    if (obj) scene.remove(obj);
+  });
+  mf.hullMesh = mf.wireframe = mf.entryCloud = mf.chunkCloud = null;
+}
+
+// ── Manifold data fetch + UMAP 3D ──────────────────────────────────────────
+
+async function computeManifold(slug, days) {
+  const statusEl = document.getElementById('manifold-status');
+  statusEl.textContent = 'Embedding chunks...';
+
+  const res = await fetch(`/api/manifold?slug=${encodeURIComponent(slug)}&days=${days}`);
+  if (!res.ok) {
+    statusEl.textContent = 'Error: ' + (await res.text());
+    return;
+  }
+  const data = await res.json();
+  mf.slug = data.slug;
+  mf.title = data.title;
+
+  const nChunks = data.chunks.length;
+  const nEntries = data.entries.length;
+  const total = nChunks + nEntries;
+
+  if (total < 3) {
+    statusEl.textContent = `Not enough data (${nChunks} chunks + ${nEntries} entries, need >= 3)`;
+    return;
+  }
+
+  statusEl.textContent = `Projecting ${nChunks} chunks + ${nEntries} entries...`;
+
+  // Build combined embedding matrix: chunks first, then entries
+  const allEmbeddings = [
+    ...data.chunks.map(c => c.embedding),
+    ...data.entries.map(e => e.embedding),
+  ];
+
+  // UMAP into 3D (raw embedding space, not association space)
+  const umap = new UMAP({
+    nComponents: 3,
+    nNeighbors: Math.min(15, Math.max(2, total - 1)),
+    minDist: 0.1,
+    random: seededRandom(UMAP_SEED),
+  });
+  const projected = umap.fit(allEmbeddings);
+
+  // Normalize all 3 axes to scene scale
+  let mins = [Infinity, Infinity, Infinity];
+  let maxs = [-Infinity, -Infinity, -Infinity];
+  for (const pt of projected) {
+    for (let d = 0; d < 3; d++) {
+      if (pt[d] < mins[d]) mins[d] = pt[d];
+      if (pt[d] > maxs[d]) maxs[d] = pt[d];
+    }
+  }
+  const ranges = mins.map((mn, d) => maxs[d] - mn || 1);
+  const scale = 10;
+
+  function normalize(pt) {
+    return {
+      x: ((pt[0] - mins[0]) / ranges[0] - 0.5) * scale,
+      y: ((pt[1] - mins[1]) / ranges[1] - 0.5) * scale,
+      z: ((pt[2] - mins[2]) / ranges[2] - 0.5) * scale,
+    };
+  }
+
+  mf.chunks = data.chunks.map((c, i) => ({
+    ...c,
+    position: normalize(projected[i]),
+  }));
+
+  mf.entries = data.entries.map((e, i) => ({
+    ...e,
+    position: normalize(projected[nChunks + i]),
+  }));
+
+  renderManifold();
+}
+
+// ── Manifold rendering ─────────────────────────────────────────────────────
+// Proximity triangulation: connect chunk points that are nearby in projected
+// space, forming a surface that reveals manifold topology (islands, bridges,
+// holes) rather than one convex blob wrapping everything.
+
+function buildIslandHulls(positions) {
+  // Cluster chunk positions into islands using alpha radius (median NN * 3.5),
+  // then compute a separate convex hull per island. This produces clean,
+  // non-intersecting surface faces — no interior cross-hatching.
+  const n = positions.length;
+  if (n < 3) return { islands: [], alpha: 0 };
+
+  // Pairwise distances
+  const dist = [];
+  for (let i = 0; i < n; i++) {
+    dist[i] = new Float32Array(n);
+    const pi = positions[i];
+    for (let j = 0; j < n; j++) {
+      const pj = positions[j];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y, dz = pi.z - pj.z;
+      dist[i][j] = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+  }
+
+  // Alpha from median nearest-neighbor distance
+  const nnDists = [];
+  for (let i = 0; i < n; i++) {
+    let minD = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (i !== j && dist[i][j] < minD) minD = dist[i][j];
+    }
+    nnDists.push(minD);
+  }
+  nnDists.sort((a, b) => a - b);
+  const median = nnDists[Math.floor(n / 2)];
+  const alpha = median * 3.5;
+
+  // Union-find to cluster into islands
+  const parent = Array.from({length: n}, (_, i) => i);
+  function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (dist[i][j] <= alpha) parent[find(i)] = find(j);
+    }
+  }
+
+  // Group points by island
+  const groups = {};
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!groups[root]) groups[root] = [];
+    groups[root].push(i);
+  }
+
+  // Build convex hull per island (via ConvexGeometry which produces clean faces)
+  const islands = [];
+  for (const root of Object.keys(groups)) {
+    const members = groups[root];
+    const vecs = members.map(i =>
+      new THREE.Vector3(positions[i].x, positions[i].y, positions[i].z)
+    );
+    islands.push({ indices: members, vectors: vecs });
+  }
+
+  console.log('Manifold: alpha=' + alpha.toFixed(2), 'median NN=' + median.toFixed(2),
+    'chunks=' + n, 'islands=' + islands.length,
+    'sizes=[' + islands.map(g => g.indices.length).join(',') + ']');
+
+  return { islands, alpha };
+}
+
+function renderManifold() {
+  clearManifoldScene();
+
+  const chunkPositions = mf.chunks.map(c => c.position);
+  const result = buildIslandHulls(chunkPositions);
+
+  const statusEl = document.getElementById('manifold-status');
+  const islandLabel = result.islands.length === 1 ? '1 island' : result.islands.length + ' islands';
+
+  // Render a convex hull per island — clean non-intersecting faces
+  const hullGroup = new THREE.Group();
+  let totalFaces = 0;
+
+  for (const island of result.islands) {
+    if (island.vectors.length >= 4) {
+      // Convex hull → face indices, then build geometry manually
+      try {
+        const hull = THREE.computeConvexHull(island.vectors);
+        if (hull.faces.length === 0) {
+          console.warn('Hull produced 0 faces for island of', island.vectors.length);
+          continue;
+        }
+
+        const verts = new Float32Array(hull.faces.length * 9);
+        let vi = 0;
+        for (const face of hull.faces) {
+          for (const idx of face) {
+            const p = hull.vertices[idx];
+            verts[vi++] = p.x; verts[vi++] = p.y; verts[vi++] = p.z;
+          }
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        geo.computeVertexNormals();
+
+        hullGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: MANIFOLD_HULL_COLOR,
+          transparent: true,
+          opacity: 0.07,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })));
+
+        const wireGeo = new THREE.WireframeGeometry(geo);
+        hullGroup.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({
+          color: MANIFOLD_HULL_COLOR, opacity: 0.3, transparent: true,
+        })));
+
+        totalFaces += hull.faces.length;
+      } catch (e) {
+        console.warn('Hull failed for island of', island.vectors.length, 'points:', e);
+      }
+    } else if (island.vectors.length === 3) {
+      // Triangle from 3 points
+      const v = island.vectors;
+      const pos = new Float32Array([
+        v[0].x, v[0].y, v[0].z, v[1].x, v[1].y, v[1].z, v[2].x, v[2].y, v[2].z,
+      ]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.computeVertexNormals();
+      hullGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: MANIFOLD_HULL_COLOR, transparent: true, opacity: 0.07,
+        side: THREE.DoubleSide, depthWrite: false,
+      })));
+      totalFaces += 1;
+    } else if (island.vectors.length === 2) {
+      // Edge between 2 points
+      const v = island.vectors;
+      const pos = new Float32Array([v[0].x, v[0].y, v[0].z, v[1].x, v[1].y, v[1].z]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      hullGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+        color: MANIFOLD_HULL_COLOR, opacity: 0.4, transparent: true,
+      })));
+    }
+    // Single-point islands are just rendered as chunk dots (below)
+  }
+
+  if (hullGroup.children.length > 0) {
+    mf.hullMesh = hullGroup;
+    scene.add(hullGroup);
+  }
+
+  statusEl.textContent = `${mf.title}: ${mf.chunks.length} chunks, ${mf.entries.length} entries — ${totalFaces} faces, ${islandLabel}`;
+
+  // Chunk dots (larger, orange)
+  {
+    const n = mf.chunks.length;
+    const pos = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3);
+    const chunkColor = new THREE.Color(MANIFOLD_CHUNK_COLOR);
+    for (let i = 0; i < n; i++) {
+      const p = mf.chunks[i].position;
+      pos[i*3] = p.x; pos[i*3+1] = p.y; pos[i*3+2] = p.z;
+      col[i*3] = chunkColor.r; col[i*3+1] = chunkColor.g; col[i*3+2] = chunkColor.b;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    mf.chunkCloud = new THREE.Points(geo,
+      new THREE.PointsMaterial({ size: 0.2, vertexColors: true, sizeAttenuation: true,
+        transparent: true, opacity: 0.4 }));
+    scene.add(mf.chunkCloud);
+  }
+
+  // Entry dots (smaller, tinted by source)
+  {
+    const n = mf.entries.length;
+    const pos = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3);
+    const sources = [...new Set(mf.entries.map(e => e.source))].sort((a, b) => a.localeCompare(b));
+    const srcMap = {};
+    sources.forEach((s, i) => { srcMap[s] = new THREE.Color(SOURCE_PALETTE[i % SOURCE_PALETTE.length]); });
+
+    for (let i = 0; i < n; i++) {
+      const p = mf.entries[i].position;
+      const c = srcMap[mf.entries[i].source] || new THREE.Color(0xffffff);
+      pos[i*3] = p.x; pos[i*3+1] = p.y; pos[i*3+2] = p.z;
+      col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    mf.entryCloud = new THREE.Points(geo,
+      new THREE.PointsMaterial({ size: 0.18, vertexColors: true, sizeAttenuation: true }));
+    scene.add(mf.entryCloud);
+  }
+}
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+
+function switchTab(tab) {
+  activeTab = tab;
+
+  // Update tab bar
+  document.querySelectorAll('#tab-bar button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Toggle control panels
+  document.getElementById('space-controls').style.display = tab === 'space' ? '' : 'none';
+  document.getElementById('manifold-controls').style.display = tab === 'manifold' ? '' : 'none';
+
+  // Toggle scene objects
+  if (tab === 'space') {
+    clearManifoldScene();
+    if (pointCloud) scene.add(pointCloud);
+  } else {
+    if (pointCloud) scene.remove(pointCloud);
+    if (mf.hullMesh)   scene.add(mf.hullMesh);
+    if (mf.wireframe)  scene.add(mf.wireframe);
+    if (mf.entryCloud) scene.add(mf.entryCloud);
+    if (mf.chunkCloud) scene.add(mf.chunkCloud);
+  }
+}
+
 let scene, camera, renderer, controls, pointCloud, raycaster, mouse;
 
 function initScene() {
@@ -257,6 +586,42 @@ function onMouseMove(event) {
   raycaster.setFromCamera(mouse, camera);
 
   const tip = document.getElementById('tooltip');
+
+  if (activeTab === 'manifold') {
+    // Manifold tooltip: check chunk cloud first, then entry cloud
+    if (mf.chunkCloud) {
+      const hits = raycaster.intersectObject(mf.chunkCloud);
+      if (hits.length > 0) {
+        const chunk = mf.chunks[hits[0].index];
+        tip.querySelector('.source').textContent   = 'chunk ' + chunk.index;
+        tip.querySelector('.date').textContent     = mf.title;
+        tip.querySelector('.concepts').textContent = chunk.text;
+        tip.style.display = 'block';
+        tip.style.left = (event.clientX + 14) + 'px';
+        tip.style.top  = (event.clientY + 14) + 'px';
+        return;
+      }
+    }
+    if (mf.entryCloud) {
+      const hits = raycaster.intersectObject(mf.entryCloud);
+      if (hits.length > 0) {
+        const entry = mf.entries[hits[0].index];
+        const date = entry.since_timestamp ? entry.since_timestamp.substring(0, 10) : '—';
+        const concepts = (entry.concepts || []).slice(0, 3).join(', ') || '(no concepts)';
+        tip.querySelector('.source').textContent   = entry.source;
+        tip.querySelector('.date').textContent     = date;
+        tip.querySelector('.concepts').textContent = concepts;
+        tip.style.display = 'block';
+        tip.style.left = (event.clientX + 14) + 'px';
+        tip.style.top  = (event.clientY + 14) + 'px';
+        return;
+      }
+    }
+    tip.style.display = 'none';
+    return;
+  }
+
+  // Space tab tooltip
   if (!pointCloud) { tip.style.display = 'none'; return; }
 
   const hits = raycaster.intersectObject(pointCloud);
@@ -286,6 +651,7 @@ function onMouseMove(event) {
 // ── Controls wiring ───────────────────────────────────────────────────────────
 
 function initControls() {
+  // ── Space tab controls ──
   const slider    = document.getElementById('days-slider');
   const daysValue = document.getElementById('days-value');
 
@@ -308,6 +674,42 @@ function initControls() {
     state.focusSlug = e.target.value || null;
     renderPoints(); // re-color only, no UMAP recompute
   });
+
+  // ── Tab bar ──
+  document.querySelectorAll('#tab-bar button').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // ── Manifold tab controls ──
+  const mfSlider = document.getElementById('mf-days-slider');
+  const mfDaysValue = document.getElementById('mf-days-value');
+
+  mfSlider.addEventListener('input', () => {
+    mf.days = Number.parseInt(mfSlider.value);
+    mfDaysValue.textContent = mfSlider.value;
+  });
+
+  document.getElementById('btn-compute-manifold').addEventListener('click', () => {
+    const slug = document.getElementById('manifold-select').value;
+    if (!slug) {
+      document.getElementById('manifold-status').textContent = 'Select a document first';
+      return;
+    }
+    computeManifold(slug, mf.days);
+  });
+}
+
+function populateManifoldDropdown() {
+  const sel = document.getElementById('manifold-select');
+  while (sel.options.length > 1) { sel.remove(1); }
+
+  state.lateralSlugs.forEach(slug => {
+    const doc = state.standing.find(s => s.slug === slug);
+    const opt = document.createElement('option');
+    opt.value = slug;
+    opt.textContent = doc ? doc.title : slug;
+    sel.appendChild(opt);
+  });
 }
 
 // ── Reload + render ───────────────────────────────────────────────────────────
@@ -326,6 +728,7 @@ async function reloadAndRender() {
 
   buildSourceColorMap();
   populateFocusDropdown();
+  populateManifoldDropdown();
   const matrix     = buildMatrix();
   const umapResult = runUMAP(matrix);
   computePositions(umapResult);

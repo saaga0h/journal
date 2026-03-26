@@ -439,6 +439,47 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 	return points, nil
 }
 
+// ManifoldEntryPoint is a lightweight entry struct carrying only what the manifold
+// visualization needs: identity, metadata for tooltips, and the raw 768-dim embedding.
+type ManifoldEntryPoint struct {
+	EntryID        int64
+	Source         string
+	SinceTimestamp time.Time
+	Concepts       []string
+	Embedding      pgvector.Vector
+}
+
+// GetRecentEntryEmbeddings returns entries with non-null embeddings within the lookback
+// window. Only fetches the columns needed for manifold projection (no engineering,
+// theoretical, git_input, raw_output).
+func GetRecentEntryEmbeddings(pool *pgxpool.Pool, windowDays int) ([]ManifoldEntryPoint, error) {
+	ctx := context.Background()
+	since := time.Now().AddDate(0, 0, -windowDays)
+
+	rows, err := pool.Query(ctx,
+		`SELECT id, source, since_timestamp, concepts, embedding
+		 FROM journal_entries
+		 WHERE embedding IS NOT NULL
+		   AND created_at >= $1
+		 ORDER BY since_timestamp DESC`,
+		since,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent entry embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var points []ManifoldEntryPoint
+	for rows.Next() {
+		var p ManifoldEntryPoint
+		if err := rows.Scan(&p.EntryID, &p.Source, &p.SinceTimestamp, &p.Concepts, &p.Embedding); err != nil {
+			return nil, fmt.Errorf("failed to scan entry embedding point: %w", err)
+		}
+		points = append(points, p)
+	}
+	return points, rows.Err()
+}
+
 func scanEntries(rows pgx.Rows) ([]JournalEntry, error) {
 	var entries []JournalEntry
 	for rows.Next() {

@@ -30,6 +30,21 @@
       font-family: monospace; font-size: 11px; cursor: pointer;
     }
 
+    #tab-bar { display: flex; gap: 0; margin-bottom: 10px; }
+    #tab-bar button {
+      flex: 1; padding: 5px 0; background: transparent; color: #666;
+      border: none; border-bottom: 2px solid transparent;
+      font-family: monospace; font-size: 12px; cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    #tab-bar button:hover { color: #aaa; }
+    #tab-bar button.active { color: #eee; border-bottom-color: #4fc3f7; }
+
+    #manifold-controls { margin-top: 4px; }
+    #manifold-status {
+      margin-top: 8px; font-size: 11px; color: #888; min-height: 14px;
+    }
+
     #tooltip {
       position: fixed; z-index: 20; display: none;
       background: rgba(10,10,15,0.92); border: 1px solid #555;
@@ -50,18 +65,36 @@
   <div id="loading">Loading entries...</div>
 
   <div id="controls">
-    <h3>Space Viz</h3>
-    <label>Days: <span class="value" id="days-value">90</span></label>
-    <input type="range" id="days-slider" min="30" max="365" step="30" value="90">
-    <div class="separator"></div>
-    <button id="btn-recompute">Recompute UMAP</button>
-    <div class="separator"></div>
-    <button id="btn-color-toggle">Color: soul-speed</button>
-    <div class="separator"></div>
-    <label for="focus-select">Focus doc:</label>
-    <select id="focus-select">
-      <option value="">— none —</option>
-    </select>
+    <div id="tab-bar">
+      <button class="active" data-tab="space">Space</button>
+      <button data-tab="manifold">Manifolds</button>
+    </div>
+
+    <div id="space-controls">
+      <label>Days: <span class="value" id="days-value">90</span></label>
+      <input type="range" id="days-slider" min="30" max="365" step="30" value="90">
+      <div class="separator"></div>
+      <button id="btn-recompute">Recompute UMAP</button>
+      <div class="separator"></div>
+      <button id="btn-color-toggle">Color: soul-speed</button>
+      <div class="separator"></div>
+      <label for="focus-select">Focus doc:</label>
+      <select id="focus-select">
+        <option value="">— none —</option>
+      </select>
+    </div>
+
+    <div id="manifold-controls" style="display:none">
+      <label>Days: <span class="value" id="mf-days-value">90</span></label>
+      <input type="range" id="mf-days-slider" min="30" max="365" step="30" value="90">
+      <div class="separator"></div>
+      <label for="manifold-select">Standing doc:</label>
+      <select id="manifold-select">
+        <option value="">— select —</option>
+      </select>
+      <button id="btn-compute-manifold">Compute</button>
+      <div id="manifold-status"></div>
+    </div>
   </div>
 
   <div id="tooltip">
@@ -74,6 +107,7 @@
 
   <script src="three.min.js"></script>
   <script src="OrbitControls.js"></script>
+  <script src="ConvexGeometry.js"></script>
   <script src="umap.min.js"></script>
   <script src="main.js"></script>
 </body>
