@@ -65,7 +65,7 @@ jobs:
         ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts 2>/dev/null
 
         # Write .env file using printf %s — prevents shell from interpreting special chars
-        printf "DB_HOST=%s\nDB_PORT=%s\nDB_USER=%s\nDB_PASSWORD='%s'\nDB_NAME=%s\nDB_SSLMODE=%s\nOLLAMA_BASE_URL=%s\nOLLAMA_EMBED_MODEL=%s\n" \
+        printf "DB_HOST='%s'\nDB_PORT='%s'\nDB_USER='%s'\nDB_PASSWORD='%s'\nDB_NAME='%s'\nDB_SSLMODE='%s'\nOLLAMA_BASE_URL='%s'\nOLLAMA_EMBED_MODEL='%s'\n" \
           "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$DB_NAME" "$DB_SSLMODE" "$OLLAMA_BASE_URL" "$OLLAMA_EMBED_MODEL" > .env
 
         # Write compose file — no heredoc to avoid YAML indentation issues
