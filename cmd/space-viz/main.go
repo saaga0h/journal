@@ -56,6 +56,13 @@ func main() {
 	ollama.SetLogger(log)
 	var ollamaMu sync.Mutex
 
+	// GET /health
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
 	// GET /api/points?days=N
 	http.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
 		windowDays := *days
