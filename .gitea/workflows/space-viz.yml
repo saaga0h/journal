@@ -24,7 +24,7 @@ jobs:
     - name: Build binary
       run: |
         mkdir -p build/amd64
-        GOOS=linux GOARCH=amd64 go build -o build/amd64/space-viz ./cmd/space-viz
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/amd64/space-viz ./cmd/space-viz
         ls -lh build/amd64/
         file build/amd64/space-viz
 
