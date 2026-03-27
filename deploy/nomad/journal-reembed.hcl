@@ -22,7 +22,9 @@ job "journal-reembed" {
     value     = "true"
   }
 
-  parameterized {}
+  parameterized {
+    payload = "forbidden"
+  }
 
   group "reembed" {
     restart {
