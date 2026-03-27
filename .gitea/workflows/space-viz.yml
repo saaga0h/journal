@@ -66,14 +66,14 @@ jobs:
 
         # Write .env file using printf %s — prevents shell from interpreting special chars
         printf 'DB_HOST=%s\nDB_PORT=%s\nDB_USER=%s\nDB_PASSWORD=%s\nDB_NAME=%s\nDB_SSLMODE=%s\nOLLAMA_BASE_URL=%s\nOLLAMA_EMBED_MODEL=%s\n' \
-          "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$DB_NAME" "$DB_SSLMODE" "$OLLAMA_BASE_URL" "$OLLAMA_EMBED_MODEL" > space-viz.env
+          "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$DB_NAME" "$DB_SSLMODE" "$OLLAMA_BASE_URL" "$OLLAMA_EMBED_MODEL" > .env
 
         # Write compose file — no heredoc to avoid YAML indentation issues
         printf 'services:\n  space-viz:\n    image: %s/space-viz:%s\n    container_name: space-viz\n    env_file: .env\n    ports:\n      - "8687:8687"\n    restart: unless-stopped\n    healthcheck:\n      test: ["CMD", "curl", "-f", "http://localhost:8687/health"]\n      interval: 30s\n      timeout: 5s\n      retries: 3\n    logging:\n      driver: "json-file"\n      options:\n        max-size: "10m"\n        max-file: "3"\n' \
           "$REGISTRY_URL" "$IMAGE_TAG" > docker-compose.yml
 
         # Copy both files to deploy host and run
-        scp -i ~/.ssh/deploy_key space-viz.env docker-compose.yml $DEPLOY_USER@$DEPLOY_HOST:/opt/docker-compose/production/space-viz/
+        scp -i ~/.ssh/deploy_key .env docker-compose.yml $DEPLOY_USER@$DEPLOY_HOST:/opt/docker-compose/production/space-viz/
         ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST \
           "mkdir -p /opt/docker-compose/production/space-viz && \
            cd /opt/docker-compose/production/space-viz && \
@@ -82,4 +82,4 @@ jobs:
            docker image prune -f && \
            echo 'space-viz deployed'"
 
-        rm -f ~/.ssh/deploy_key space-viz.env docker-compose.yml
+        rm -f ~/.ssh/deploy_key .env docker-compose.yml
