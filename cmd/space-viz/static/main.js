@@ -155,22 +155,45 @@ const MANIFOLD_HULL_COLOR = 0x4fc3f7;
 const MANIFOLD_CHUNK_COLOR = 0x6ad0f7; // desaturated surface blue — blends with hull
 
 const mf = {
-  slug:       null,
-  title:      '',
-  days:       90,
-  chunks:     [],   // {index, text, position: {x,y,z}, embedding}
-  entries:    [],   // {entry_id, source, since_timestamp, concepts, position: {x,y,z}}
-  hullMesh:   null,
-  wireframe:  null,
-  entryCloud: null,
-  chunkCloud: null,
+  slug:         null,
+  title:        '',
+  days:         90,
+  chunks:       [],   // {index, text, position: {x,y,z}, embedding}
+  entries:      [],   // {entry_id, source, since_timestamp, concepts, position: {x,y,z}}
+  thinAxis:     -1,   // index of near-zero-variance axis (-1 if none), set during UMAP
+  hullMesh:     null,
+  wireframe:    null,
+  entryCloud:   null,
+  chunkCloud:   null,
+  fieldMode:    null, // 'scalar' | 'density' | 'tensor' | null
+  fieldCloud:   null, // THREE.Points for scalar/density field overlay
+  fieldHull:    null, // THREE.Group for tensor-deformed hull overlay
+  soulSpeedMap: {},   // entryID -> soul-speed float, populated from state.points
 };
+
+function buildSoulSpeedMap() {
+  mf.soulSpeedMap = {};
+  for (const pt of state.points) {
+    mf.soulSpeedMap[pt.EntryID] = pt.Coords?.[SOUL_SPEED_SLUG] ?? 0;
+  }
+}
+
+function clearFieldScene() {
+  [mf.fieldCloud, mf.fieldHull].forEach(obj => {
+    if (obj) scene.remove(obj);
+  });
+  mf.fieldCloud = mf.fieldHull = null;
+}
 
 function clearManifoldScene() {
   [mf.hullMesh, mf.wireframe, mf.entryCloud, mf.chunkCloud].forEach(obj => {
     if (obj) scene.remove(obj);
   });
   mf.hullMesh = mf.wireframe = mf.entryCloud = mf.chunkCloud = null;
+  clearFieldScene();
+  mf.fieldMode = null;
+  const fieldStatus = document.getElementById('field-status');
+  if (fieldStatus) fieldStatus.textContent = '';
 }
 
 // ── Manifold data fetch + UMAP 3D ──────────────────────────────────────────
@@ -214,15 +237,21 @@ async function computeManifold(slug, days) {
   });
   const projected = umap.fit(allEmbeddings);
 
-  // Normalize all 3 axes to scene scale
+  // Normalize using chunk extents only — chunks fill the scene, entries placed relative to them.
+  // This prevents outlier entries from compressing the chunk cluster into a tiny corner.
   let mins = [Infinity, Infinity, Infinity];
   let maxs = [-Infinity, -Infinity, -Infinity];
-  for (const pt of projected) {
+  for (let i = 0; i < nChunks; i++) {
+    const pt = projected[i];
     for (let d = 0; d < 3; d++) {
       if (pt[d] < mins[d]) mins[d] = pt[d];
       if (pt[d] > maxs[d]) maxs[d] = pt[d];
     }
   }
+  const rawRanges = mins.map((mn, d) => maxs[d] - mn);
+  const maxRawRange = Math.max(...rawRanges);
+  mf.thinAxis = rawRanges.findIndex(r => r < maxRawRange * 0.02);
+  console.log('UMAP rawRanges (chunks):', rawRanges.map(r => r.toFixed(4)), 'thinAxis:', mf.thinAxis);
   const ranges = mins.map((mn, d) => maxs[d] - mn || 1);
   const scale = 10;
 
@@ -318,6 +347,53 @@ function buildIslandHulls(positions) {
   return { islands, alpha };
 }
 
+// 2D convex hull (Jarvis march / gift wrapping) in the dominant plane.
+// Returns triangle fan faces as [{x,y,z}[3]]. O(nh) — fine for n<200.
+function convexHull2D(vecs) {
+  if (vecs.length < 3) return [];
+
+  // Pick the two axes with the largest raw spread
+  const axes = ['x', 'y', 'z'];
+  const spreads = axes.map(ax => {
+    const vals = vecs.map(v => v[ax]);
+    return Math.max(...vals) - Math.min(...vals);
+  });
+  const axOrder = [0, 1, 2].sort((a, b) => spreads[b] - spreads[a]);
+  const ax0 = axes[axOrder[0]], ax1 = axes[axOrder[1]];
+
+  const n = vecs.length;
+  const u = vecs.map(v => v[ax0]);
+  const w = vecs.map(v => v[ax1]);
+
+  // Start from leftmost point
+  let start = 0;
+  for (let i = 1; i < n; i++) if (u[i] < u[start] || (u[i] === u[start] && w[i] < w[start])) start = i;
+
+  const hullIdx = [];
+  let cur = start;
+  do {
+    hullIdx.push(cur);
+    let next = (cur + 1) % n;
+    for (let i = 0; i < n; i++) {
+      // cross > 0 means i is more counterclockwise than next relative to cur
+      const cross = (u[next] - u[cur]) * (w[i] - w[cur]) - (w[next] - w[cur]) * (u[i] - u[cur]);
+      if (cross > 0) next = i;
+    }
+    cur = next;
+  } while (cur !== start && hullIdx.length <= n);
+
+  if (hullIdx.length < 3) return [];
+
+  console.log('convexHull2D: axes=' + ax0 + '/' + ax1 + ' hullVerts=' + hullIdx.length + '/' + n);
+
+  // Fan-triangulate from hullIdx[0]
+  const faces = [];
+  for (let k = 1; k < hullIdx.length - 1; k++) {
+    faces.push([vecs[hullIdx[0]], vecs[hullIdx[k]], vecs[hullIdx[k + 1]]]);
+  }
+  return faces;
+}
+
 function renderManifold() {
   clearManifoldScene();
 
@@ -335,9 +411,30 @@ function renderManifold() {
     if (island.vectors.length >= 4) {
       // Convex hull → face indices, then build geometry manually
       try {
-        const hull = THREE.computeConvexHull(island.vectors);
+        // Skip 3D hull entirely if we detected a near-zero axis during projection
+        const hull = mf.thinAxis < 0 ? THREE.computeConvexHull(island.vectors) : { faces: [] };
         if (hull.faces.length === 0) {
-          console.warn('Hull produced 0 faces for island of', island.vectors.length);
+          // Points are coplanar — fall back to 2D convex hull in dominant plane
+          console.warn('Coplanar island of', island.vectors.length, '— using flat hull');
+          const flatFaces = convexHull2D(island.vectors);
+          if (flatFaces.length === 0) continue;
+          const verts = new Float32Array(flatFaces.length * 9);
+          let vi = 0;
+          for (const face of flatFaces) {
+            for (const p of face) { verts[vi++] = p.x; verts[vi++] = p.y; verts[vi++] = p.z; }
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+          geo.computeVertexNormals();
+          hullGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+            color: MANIFOLD_HULL_COLOR, transparent: true, opacity: 0.07,
+            side: THREE.DoubleSide, depthWrite: false,
+          })));
+          const wireGeo = new THREE.WireframeGeometry(geo);
+          hullGroup.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({
+            color: MANIFOLD_HULL_COLOR, opacity: 0.3, transparent: true,
+          })));
+          totalFaces += flatFaces.length;
           continue;
         }
 
@@ -449,6 +546,260 @@ function renderManifold() {
   }
 }
 
+// ── Soul Speed field rendering ─────────────────────────────────────────────
+// All three modes work in the same UMAP-projected space as the manifold.
+// Soul-speed values come from mf.soulSpeedMap (keyed by EntryID from /api/points).
+// mf.entries use entry_id (snake_case from /api/manifold json tag) — JS numeric
+// coercion bridges the key type mismatch.
+
+const FIELD_COLOR = 0xff6e40; // warm orange — visually distinct from manifold blue
+
+function renderFieldScalar() {
+  clearFieldScene();
+  const entries = mf.entries;
+  if (!entries || entries.length === 0) return 0;
+
+  const n = entries.length;
+  const fieldColor = new THREE.Color(FIELD_COLOR);
+  // Soul-speed = per-entry manifold attraction strength.
+  // Direction: toward unweighted chunk centroid (guaranteed inside hull).
+  // Length: purely ss × fixed_scale — variation reflects only soul-speed, not distance.
+  const ssVals = entries.map(e => mf.soulSpeedMap[e.entry_id] ?? 0);
+  const arrowSize = 0.07;
+
+  // Unweighted chunk centroid — stable point inside the hull
+  const pullX = mf.chunks.reduce((s, c) => s + c.position.x, 0) / mf.chunks.length;
+  const pullY = mf.chunks.reduce((s, c) => s + c.position.y, 0) / mf.chunks.length;
+  const pullZ = mf.chunks.reduce((s, c) => s + c.position.z, 0) / mf.chunks.length;
+
+  // Shaft: 2 vertices per entry (base → tip)
+  const linePos = new Float32Array(n * 6);
+  const lineCol = new Float32Array(n * 6);
+  // Chevron arrowhead: 4 vertices per entry (2 arms × 2 endpoints)
+  const arrowPos = new Float32Array(n * 12);
+  const arrowCol = new Float32Array(n * 12);
+  // Raycaster dots at original positions
+  const dotPos = new Float32Array(n * 3);
+  const dotCol = new Float32Array(n * 3);
+
+  for (let i = 0; i < n; i++) {
+    const e = entries[i];
+    const ss = ssVals[i]; // raw soul-speed [0..1]
+    const intensity = 0.3 + ss * 0.7;
+
+    // Direction toward chunk centroid — just orientation, not magnitude
+    const dx = pullX - e.position.x;
+    const dy = pullY - e.position.y;
+    const dz = pullZ - e.position.z;
+    const distToPull = Math.hypot(dx, dy, dz) || 1;
+    const nx = dx/distToPull, ny = dy/distToPull, nz = dz/distToPull;
+
+    // Vector length = ss × fixed scale — variation is purely soul-speed
+    const d = ss * 2.5;
+    const tx = e.position.x + nx * d;
+    const ty = e.position.y + ny * d;
+    const tz = e.position.z + nz * d;
+
+    // Shaft: base → tip
+    linePos[i*6]   = e.position.x; linePos[i*6+1] = e.position.y; linePos[i*6+2] = e.position.z;
+    linePos[i*6+3] = tx;           linePos[i*6+4] = ty;           linePos[i*6+5] = tz;
+    lineCol[i*6]   = fieldColor.r * 0.2; lineCol[i*6+1] = fieldColor.g * 0.2; lineCol[i*6+2] = fieldColor.b * 0.2;
+    lineCol[i*6+3] = fieldColor.r * intensity; lineCol[i*6+4] = fieldColor.g * intensity; lineCol[i*6+5] = fieldColor.b * intensity;
+
+    // Chevron: two perpendicular arms back from tip along the shaft direction
+    // Perpendicular to shaft in XZ plane
+    const px = -nz, pz = nx; // rotate 90° in XZ
+    arrowPos[i*12]    = tx; arrowPos[i*12+1] = ty; arrowPos[i*12+2] = tz;
+    arrowPos[i*12+3]  = tx - nx*arrowSize + px*arrowSize; arrowPos[i*12+4] = ty - ny*arrowSize; arrowPos[i*12+5] = tz - nz*arrowSize + pz*arrowSize;
+    arrowPos[i*12+6]  = tx; arrowPos[i*12+7] = ty; arrowPos[i*12+8] = tz;
+    arrowPos[i*12+9]  = tx - nx*arrowSize - px*arrowSize; arrowPos[i*12+10] = ty - ny*arrowSize; arrowPos[i*12+11] = tz - nz*arrowSize - pz*arrowSize;
+    for (let k = 0; k < 4; k++) {
+      arrowCol[i*12+k*3]   = fieldColor.r * intensity;
+      arrowCol[i*12+k*3+1] = fieldColor.g * intensity;
+      arrowCol[i*12+k*3+2] = fieldColor.b * intensity;
+    }
+
+    // Raycaster dot at original position
+    dotPos[i*3] = e.position.x; dotPos[i*3+1] = e.position.y; dotPos[i*3+2] = e.position.z;
+    dotCol[i*3] = fieldColor.r * intensity; dotCol[i*3+1] = fieldColor.g * intensity; dotCol[i*3+2] = fieldColor.b * intensity;
+  }
+
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+  lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+  const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.7,
+  }));
+
+  const arrowGeo = new THREE.BufferGeometry();
+  arrowGeo.setAttribute('position', new THREE.BufferAttribute(arrowPos, 3));
+  arrowGeo.setAttribute('color', new THREE.BufferAttribute(arrowCol, 3));
+  const arrows = new THREE.LineSegments(arrowGeo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.9,
+  }));
+
+  const dotGeo = new THREE.BufferGeometry();
+  dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPos, 3));
+  dotGeo.setAttribute('color', new THREE.BufferAttribute(dotCol, 3));
+  const dots = new THREE.Points(dotGeo, new THREE.PointsMaterial({
+    size: 0.12, vertexColors: true, sizeAttenuation: true,
+    transparent: true, opacity: 0.6,
+  }));
+
+  // Group both into fieldCloud (fieldCloud is the raycaster target — use dots)
+  const group = new THREE.Group();
+  group.add(lines);
+  group.add(arrows);
+  group.add(dots);
+  mf.fieldCloud = dots; // raycaster uses this — index matches mf.entries
+  mf.fieldHull = group; // holds all three objects for cleanup/tab-switch
+  scene.add(group);
+  return n;
+}
+
+function renderFieldDensity() {
+  clearFieldScene();
+  const entries = mf.entries;
+  if (!entries || entries.length === 0) return 0;
+
+  const n = entries.length;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const fieldColor = new THREE.Color(FIELD_COLOR);
+
+  for (let i = 0; i < n; i++) {
+    const e = entries[i];
+    const ss = mf.soulSpeedMap[e.entry_id] ?? 0;
+    pos[i*3]     = e.position.x;
+    pos[i*3 + 1] = e.position.y;
+    pos[i*3 + 2] = e.position.z;
+    // Brightness proportional to soul-speed — high SS = bright orange glow
+    col[i*3]     = fieldColor.r * ss;
+    col[i*3 + 1] = fieldColor.g * ss;
+    col[i*3 + 2] = fieldColor.b * ss;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  // Faint halos — reads as ambient volumetric density, not competing point cloud
+  mf.fieldCloud = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 0.5, vertexColors: true, sizeAttenuation: true,
+    transparent: true, opacity: 0.35,
+  }));
+  scene.add(mf.fieldCloud);
+  return n;
+}
+
+function renderFieldTensor() {
+  clearFieldScene();
+  const entries = mf.entries;
+  const chunks = mf.chunks;
+  if (!entries || entries.length === 0 || !chunks || chunks.length === 0) return 0;
+
+  // For each chunk (hull vertex source), compute mean soul-speed of nearby entries
+  const radius = 3.0;
+  const tensorScale = 2.0;
+
+  const deformedPositions = chunks.map(chunk => {
+    const cx = chunk.position.x, cy = chunk.position.y, cz = chunk.position.z;
+    let ssSum = 0, count = 0;
+    for (const e of entries) {
+      const dx = e.position.x - cx, dy = e.position.y - cy, dz = e.position.z - cz;
+      if (Math.sqrt(dx*dx + dy*dy + dz*dz) <= radius) {
+        ssSum += mf.soulSpeedMap[e.entry_id] ?? 0;
+        count++;
+      }
+    }
+    const meanSS = count > 0 ? ssSum / count : 0;
+    // Contract toward origin proportional to mean SS (high SS = denser field = more contraction)
+    const factor = 1.0 - meanSS * 0.5 * tensorScale;
+    return { x: cx * factor, y: cy * factor, z: cz * factor };
+  });
+
+  const result = buildIslandHulls(deformedPositions);
+  const hullGroup = new THREE.Group();
+
+  for (const island of result.islands) {
+    if (island.vectors.length >= 4) {
+      try {
+        const hull = mf.thinAxis < 0 ? THREE.computeConvexHull(island.vectors) : { faces: [] };
+        let faces3d = hull.faces;
+
+        if (faces3d.length === 0) {
+          const flatFaces = convexHull2D(island.vectors);
+          if (flatFaces.length === 0) continue;
+          const verts = new Float32Array(flatFaces.length * 9);
+          let vi = 0;
+          for (const face of flatFaces) {
+            for (const p of face) { verts[vi++] = p.x; verts[vi++] = p.y; verts[vi++] = p.z; }
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+          geo.computeVertexNormals();
+          hullGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+            color: FIELD_COLOR, transparent: true, opacity: 0.12,
+            side: THREE.DoubleSide, depthWrite: false,
+          })));
+        } else {
+          const verts = new Float32Array(faces3d.length * 9);
+          let vi = 0;
+          for (const face of faces3d) {
+            for (const idx of face) {
+              const p = hull.vertices[idx];
+              verts[vi++] = p.x; verts[vi++] = p.y; verts[vi++] = p.z;
+            }
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+          geo.computeVertexNormals();
+          hullGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+            color: FIELD_COLOR, transparent: true, opacity: 0.12,
+            side: THREE.DoubleSide, depthWrite: false,
+          })));
+          const wireGeo = new THREE.WireframeGeometry(geo);
+          hullGroup.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({
+            color: FIELD_COLOR, opacity: 0.35, transparent: true,
+          })));
+        }
+      } catch (e) {
+        console.warn('Tensor hull failed for island:', e);
+      }
+    }
+  }
+
+  if (hullGroup.children.length > 0) {
+    mf.fieldHull = hullGroup;
+    scene.add(hullGroup);
+  }
+  return entries.length;
+}
+
+function applyField() {
+  const mode = document.getElementById('field-mode-select').value;
+  const statusEl = document.getElementById('field-status');
+
+  if (!mode) {
+    clearFieldScene();
+    mf.fieldMode = null;
+    statusEl.textContent = '';
+    return;
+  }
+
+  if (!mf.slug || mf.entries.length === 0) {
+    statusEl.textContent = 'Compute a manifold first';
+    return;
+  }
+
+  mf.fieldMode = mode;
+  let count = 0;
+  if (mode === 'scalar')       count = renderFieldScalar();
+  else if (mode === 'density') count = renderFieldDensity();
+  else if (mode === 'tensor')  count = renderFieldTensor();
+
+  statusEl.textContent = `${mf.title}: ${mode} field, ${count} entries`;
+}
+
 // ── Tab switching ───────────────────────────────────────────────────────────
 
 function switchTab(tab) {
@@ -473,6 +824,10 @@ function switchTab(tab) {
     if (mf.wireframe)  scene.add(mf.wireframe);
     if (mf.entryCloud) scene.add(mf.entryCloud);
     if (mf.chunkCloud) scene.add(mf.chunkCloud);
+    // fieldHull may be a Group (scalar mode lines+dots) or a hull mesh group (tensor)
+    // fieldCloud is either a standalone Points or a child of fieldHull group
+    if (mf.fieldHull) scene.add(mf.fieldHull);
+    if (mf.fieldCloud && !mf.fieldHull) scene.add(mf.fieldCloud);
   }
 }
 
@@ -602,15 +957,20 @@ function onMouseMove(event) {
         return;
       }
     }
-    if (mf.entryCloud) {
-      const hits = raycaster.intersectObject(mf.entryCloud);
+    // Check entryCloud first, then fieldCloud (scalar displaces entries — both share mf.entries index)
+    const entryClouds = [mf.entryCloud, mf.fieldCloud].filter(Boolean);
+    for (const cloud of entryClouds) {
+      const hits = raycaster.intersectObject(cloud);
       if (hits.length > 0) {
         const entry = mf.entries[hits[0].index];
+        if (!entry) continue;
         const date = entry.since_timestamp ? entry.since_timestamp.substring(0, 10) : '—';
         const concepts = (entry.concepts || []).slice(0, 3).join(', ') || '(no concepts)';
+        const ss = (mf.soulSpeedMap[entry.entry_id] ?? 0).toFixed(3);
+        const ssLine = `soul-speed: ${ss}`;
         tip.querySelector('.source').textContent   = entry.source;
         tip.querySelector('.date').textContent     = date;
-        tip.querySelector('.concepts').textContent = concepts;
+        tip.querySelector('.concepts').textContent = `${ssLine}\n${concepts}`;
         tip.style.display = 'block';
         tip.style.left = (event.clientX + 14) + 'px';
         tip.style.top  = (event.clientY + 14) + 'px';
@@ -697,6 +1057,16 @@ function initControls() {
     }
     computeManifold(slug, mf.days);
   });
+
+  document.getElementById('btn-apply-field').addEventListener('click', applyField);
+
+  document.getElementById('field-mode-select').addEventListener('change', () => {
+    if (!document.getElementById('field-mode-select').value) {
+      clearFieldScene();
+      mf.fieldMode = null;
+      document.getElementById('field-status').textContent = '';
+    }
+  });
 }
 
 function populateManifoldDropdown() {
@@ -727,6 +1097,7 @@ async function reloadAndRender() {
   }
 
   buildSourceColorMap();
+  buildSoulSpeedMap();
   populateFocusDropdown();
   populateManifoldDropdown();
   const matrix     = buildMatrix();

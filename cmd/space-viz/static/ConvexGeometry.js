@@ -60,13 +60,20 @@
     // Point most distant from plane abc
     var ac = new THREE.Vector3().subVectors(points[c], points[a]);
     var normal = new THREE.Vector3().crossVectors(ab, ac).normalize();
+
+    // Guard: if ab×ac is zero (a,b,c are collinear), hull is degenerate
+    if (normal.lengthSq() < 1e-20) return { faces: faces, vertices: points };
+
     bestDist = 0;
-    var dd = 0;
+    var dd = -1;
     for (var i = 0; i < n; i++) {
       if (i === a || i === b || i === c) continue;
       var d = Math.abs(new THREE.Vector3().subVectors(points[i], points[a]).dot(normal));
       if (d > bestDist) { bestDist = d; dd = i; }
     }
+
+    // Guard: all points coplanar — no valid 4th vertex
+    if (dd < 0 || bestDist < 1e-10) return { faces: faces, vertices: points };
 
     // Orient tetrahedron outward
     var aboveD = new THREE.Vector3().subVectors(points[dd], points[a]).dot(normal);

@@ -44,6 +44,9 @@
     #manifold-status {
       margin-top: 8px; font-size: 11px; color: #888; min-height: 14px;
     }
+    #field-status {
+      margin-top: 4px; font-size: 11px; color: #888; min-height: 14px;
+    }
 
     #tooltip {
       position: fixed; z-index: 20; display: none;
@@ -94,6 +97,16 @@
       </select>
       <button id="btn-compute-manifold">Compute</button>
       <div id="manifold-status"></div>
+      <div class="separator"></div>
+      <label for="field-mode-select">Field:</label>
+      <select id="field-mode-select">
+        <option value="">— off —</option>
+        <option value="scalar">Scalar</option>
+        <option value="density">Density</option>
+        <option value="tensor">Tensor</option>
+      </select>
+      <button id="btn-apply-field">Apply Field</button>
+      <div id="field-status"></div>
     </div>
   </div>
 
