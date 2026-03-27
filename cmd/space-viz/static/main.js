@@ -16,6 +16,7 @@ const state = {
   colorMode:    'soul-speed', // 'soul-speed' | 'source'
   focusSlug:    null,  // standing doc slug currently in focus, or null
   days:         90,
+  simRange:     {},    // slug -> {lo, span} for log-normalising raw similarities in applyFog
 };
 
 // ── Distinct source palette ───────────────────────────────────────────────────
@@ -136,13 +137,19 @@ function getColor(pt) {
 // fog strength: 0 = full color, 1 = fully faded to background
 
 const FOG_MIN_ALPHA = 0.06; // dimmest a faded point gets (not fully invisible)
+const FOG_WHITE = new THREE.Color(0xffffff);
 
 function applyFog(baseColor, pt) {
   if (!state.focusSlug) { return baseColor; }
-  const sim = pt.Coords?.[state.focusSlug] ?? 0;
-  // Remap sim to fog: sim=1 → no fog, sim=0 → max fog
-  const visible = Math.max(FOG_MIN_ALPHA, sim);
-  return new THREE.Color().lerpColors(BG_COLOR, baseColor, visible);
+  const raw = pt.Coords?.[state.focusSlug] ?? 0;
+  const visible = Math.max(FOG_MIN_ALPHA, logNormSim(state.focusSlug, raw));
+  // Low end: fade toward background. High end: lift toward white slightly.
+  // visible=0 → BG, visible=0.5 → baseColor, visible=1 → 20% toward white
+  const base = new THREE.Color().lerpColors(BG_COLOR, baseColor, Math.min(1, visible * 2));
+  if (visible > 0.5) {
+    base.lerpColors(base, FOG_WHITE, (visible - 0.5) * 0.4);
+  }
+  return base;
 }
 
 // ── Three.js scene ────────────────────────────────────────────────────────────
@@ -172,10 +179,48 @@ const mf = {
 };
 
 function buildSoulSpeedMap() {
+  const LOG_SCALE = Math.E - 1; // log1p(x*(e-1)) maps [0,1]→[0,1] with mild stretch
+
+  // Compute per-slug min/max across all points for fog normalisation
+  state.simRange = {};
+  for (const pt of state.points) {
+    for (const slug in pt.Coords) {
+      const v = pt.Coords[slug];
+      if (v <= 0) continue;
+      if (!state.simRange[slug]) state.simRange[slug] = { lo: v, hi: v };
+      else {
+        if (v < state.simRange[slug].lo) state.simRange[slug].lo = v;
+        if (v > state.simRange[slug].hi) state.simRange[slug].hi = v;
+      }
+    }
+  }
+  for (const slug in state.simRange) {
+    const r = state.simRange[slug];
+    r.span = r.hi > r.lo ? r.hi - r.lo : 1;
+  }
+
+  // soul-speed map: log-normalised values for field renderers
+  const ssr = state.simRange[SOUL_SPEED_SLUG];
   mf.soulSpeedMap = {};
   for (const pt of state.points) {
-    mf.soulSpeedMap[pt.EntryID] = pt.Coords?.[SOUL_SPEED_SLUG] ?? 0;
+    const v = pt.Coords?.[SOUL_SPEED_SLUG] ?? 0;
+    if (ssr) {
+      const norm = Math.max(0, Math.min(1, (v - ssr.lo) / ssr.span));
+      mf.soulSpeedMap[pt.EntryID] = Math.log1p(norm * LOG_SCALE);
+    } else {
+      mf.soulSpeedMap[pt.EntryID] = 0;
+    }
   }
+}
+
+// logNormSim returns a log-stretched [0,1] value for a raw similarity score,
+// using the per-slug range computed in buildSoulSpeedMap.
+function logNormSim(slug, rawSim) {
+  const LOG_SCALE = Math.E - 1;
+  const r = state.simRange[slug];
+  if (!r) return rawSim;
+  const norm = Math.max(0, Math.min(1, (rawSim - r.lo) / r.span));
+  return Math.log1p(norm * LOG_SCALE);
 }
 
 function clearFieldScene() {
@@ -594,8 +639,11 @@ function renderFieldScalar() {
     const distToPull = Math.hypot(dx, dy, dz) || 1;
     const nx = dx/distToPull, ny = dy/distToPull, nz = dz/distToPull;
 
-    // Vector length = ss × fixed scale — variation is purely soul-speed
-    const d = ss * 2.5;
+    // Vector length = ss × nearest-chunk distance × scale
+    // chunkDist ∈ [0,1]: 0 = entry sits on manifold, 1 = completely unrelated
+    // Entries close to manifold get short vectors even at high SS; far entries get long vectors
+    const chunkDist = e.nearest_chunk_dist ?? 1.0;
+    const d = ss * chunkDist * 5.0;
     const tx = e.position.x + nx * d;
     const ty = e.position.y + ny * d;
     const tz = e.position.z + nz * d;
@@ -993,8 +1041,9 @@ function onMouseMove(event) {
     // Show similarity to focused doc if one is selected
     let focusLine = '';
     if (state.focusSlug) {
-      const sim = (pt.Coords?.[state.focusSlug] ?? 0).toFixed(3);
-      focusLine = `${state.focusSlug}: ${sim}`;
+      const raw = pt.Coords?.[state.focusSlug] ?? 0;
+      const scaled = logNormSim(state.focusSlug, raw);
+      focusLine = `${state.focusSlug}: ${raw.toFixed(3)} (${scaled.toFixed(2)} scaled)`;
     }
 
     tip.querySelector('.source').textContent   = pt.Source;
@@ -1127,6 +1176,20 @@ async function init() {
   initScene();
   initControls();
   animate();
+
+  // Set slider max to actual data span before first render
+  try {
+    const meta = await fetch('/api/meta').then(r => r.json());
+    const span = meta.span_days || 365;
+    const slider = document.getElementById('days-slider');
+    const mfSlider = document.getElementById('mf-days-slider');
+    slider.max = span;
+    mfSlider.max = span;
+    // Clamp current values if they exceed the span
+    if (state.days > span) { state.days = span; slider.value = span; document.getElementById('days-value').textContent = span; }
+    if (mf.days > span)    { mf.days = span;    mfSlider.value = span; document.getElementById('mf-days-value').textContent = span; }
+  } catch (e) { console.warn('Failed to fetch /api/meta, using slider defaults:', e); }
+
   await reloadAndRender();
 }
 

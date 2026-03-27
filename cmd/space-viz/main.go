@@ -74,6 +74,20 @@ func main() {
 		json.NewEncoder(w).Encode(points)
 	})
 
+	// GET /api/meta — data span info for slider initialisation
+	http.HandleFunc("/api/meta", func(w http.ResponseWriter, r *http.Request) {
+		span, err := database.GetDataSpanDays(pool)
+		if err != nil {
+			log.WithError(err).Error("Failed to get data span")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			SpanDays int `json:"span_days"`
+		}{SpanDays: span})
+	})
+
 	// GET /api/standing
 	http.HandleFunc("/api/standing", func(w http.ResponseWriter, r *http.Request) {
 		docs, err := database.ListCurrentStandingDocuments(pool)
@@ -150,6 +164,11 @@ func main() {
 			return
 		}
 
+		chunkEmbeddings := make([][]float32, len(chunkResults))
+		for i, cr := range chunkResults {
+			chunkEmbeddings[i] = cr.Embedding
+		}
+
 		entries, err := database.GetRecentEntryEmbeddings(pool, windowDays)
 		if err != nil {
 			log.WithError(err).Error("Failed to fetch entry embeddings")
@@ -158,20 +177,22 @@ func main() {
 		}
 
 		type entryResult struct {
-			EntryID        int64     `json:"entry_id"`
-			Source         string    `json:"source"`
-			SinceTimestamp string    `json:"since_timestamp"`
-			Concepts       []string  `json:"concepts"`
-			Embedding      []float32 `json:"embedding"`
+			EntryID          int64     `json:"entry_id"`
+			Source           string    `json:"source"`
+			SinceTimestamp   string    `json:"since_timestamp"`
+			Concepts         []string  `json:"concepts"`
+			Embedding        []float32 `json:"embedding"`
+			NearestChunkDist float32   `json:"nearest_chunk_dist"`
 		}
 		entryResults := make([]entryResult, 0, len(entries))
 		for _, e := range entries {
 			entryResults = append(entryResults, entryResult{
-				EntryID:        e.EntryID,
-				Source:         e.Source,
-				SinceTimestamp: e.SinceTimestamp.Format("2006-01-02T15:04:05Z"),
-				Concepts:       e.Concepts,
-				Embedding:      e.Embedding.Slice(),
+				EntryID:          e.EntryID,
+				Source:           e.Source,
+				SinceTimestamp:   e.SinceTimestamp.Format("2006-01-02T15:04:05Z"),
+				Concepts:         e.Concepts,
+				Embedding:        e.Embedding.Slice(),
+				NearestChunkDist: services.NearestChunkDistance(e.Embedding.Slice(), chunkEmbeddings),
 			})
 		}
 

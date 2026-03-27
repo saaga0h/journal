@@ -36,6 +36,22 @@ func ComputeStandingAssociations(entryEmbedding []float32, standings []database.
 	return results
 }
 
+// NearestChunkDistance returns 1 - max cosine similarity between entryEmbedding
+// and any chunk in chunks. Returns 1.0 if chunks is empty.
+// Distance 0 = entry is identical to a chunk; 1 = completely unrelated.
+func NearestChunkDistance(entryEmbedding []float32, chunks [][]float32) float32 {
+	if len(chunks) == 0 {
+		return 1.0
+	}
+	var maxSim float32
+	for _, chunk := range chunks {
+		if sim := cosineSimilarity(entryEmbedding, chunk); sim > maxSim {
+			maxSim = sim
+		}
+	}
+	return 1.0 - maxSim
+}
+
 // cosineSimilarity computes the cosine similarity between two vectors.
 // Returns 0 if either vector has zero magnitude.
 func cosineSimilarity(a, b []float32) float32 {

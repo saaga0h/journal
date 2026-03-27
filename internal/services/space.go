@@ -91,6 +91,19 @@ func ClusterSpread(points []database.EntrySpacePoint, slugs []string, gravity Gr
 	return float32(totalDist / float64(len(points)))
 }
 
+// ManifoldSpread measures how far entries are from the nearest chunk in embedding space.
+// Returns the mean NearestChunkDistance across all entries. Returns 0 if no entries.
+func ManifoldSpread(entries []database.ManifoldEntryPoint, chunkEmbeddings [][]float32) float32 {
+	if len(entries) == 0 {
+		return 0
+	}
+	var total float64
+	for _, e := range entries {
+		total += float64(NearestChunkDistance(e.Embedding.Slice(), chunkEmbeddings))
+	}
+	return float32(total / float64(len(entries)))
+}
+
 // TrendingConcepts returns the top N concepts by GLF-weighted frequency across entries.
 // Each concept's score is the sum of GLF weights of entries that contain it.
 func TrendingConcepts(points []database.EntrySpacePoint, k float64, midpointDays float64, topN int) []string {

@@ -376,6 +376,21 @@ func GetRecentlyActivatedStandingSlugs(pool *pgxpool.Pool, days int) ([]string, 
 	return slugs, rows.Err()
 }
 
+// GetDataSpanDays returns the number of days between the earliest since_timestamp
+// and today. Used by the space-viz slider to set a dynamic max range.
+func GetDataSpanDays(pool *pgxpool.Pool) (int, error) {
+	ctx := context.Background()
+	var earliest time.Time
+	err := pool.QueryRow(ctx,
+		`SELECT MIN(since_timestamp) FROM journal_entries WHERE since_timestamp IS NOT NULL`,
+	).Scan(&earliest)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get data span: %w", err)
+	}
+	days := int(time.Since(earliest).Hours()/24) + 1
+	return days, nil
+}
+
 // GetRecentEntriesInStandingSpace returns entries within the lookback window as points
 // in standing-document space. Each point carries a map of standing_slug -> similarity.
 // Uses created_at for recency (same semantics as GetRecentEntriesWithEmbeddings).
@@ -388,7 +403,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 		        je.concepts, esa.standing_slug, esa.similarity
 		 FROM journal_entries je
 		 JOIN entry_standing_associations esa ON esa.entry_id = je.id
-		 WHERE je.created_at >= $1
+		 WHERE je.since_timestamp >= $1
 		 ORDER BY je.id, esa.standing_slug`,
 		since,
 	)
