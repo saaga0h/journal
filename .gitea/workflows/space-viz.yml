@@ -64,17 +64,9 @@ jobs:
         chmod 600 ~/.ssh/deploy_key
         ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts 2>/dev/null
 
-        # Write .env file locally — avoids shell interpolation of special chars
-        cat > space-viz.env << EOF
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
-DB_NAME=${DB_NAME}
-DB_SSLMODE=${DB_SSLMODE}
-OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL}
-EOF
+        # Write .env file using printf %s — prevents shell from interpreting special chars
+        printf 'DB_HOST=%s\nDB_PORT=%s\nDB_USER=%s\nDB_PASSWORD=%s\nDB_NAME=%s\nDB_SSLMODE=%s\nOLLAMA_BASE_URL=%s\nOLLAMA_EMBED_MODEL=%s\n' \
+          "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$DB_NAME" "$DB_SSLMODE" "$OLLAMA_BASE_URL" "$OLLAMA_EMBED_MODEL" > space-viz.env
 
         # Write compose file locally
         cat > docker-compose.yml << EOF
