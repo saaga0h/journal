@@ -33,7 +33,7 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         context: build/amd64
-        dockerfile: cmd/space-viz/Dockerfile
+        file: cmd/space-viz/Dockerfile
         push: true
         tags: |
           ${{ secrets.REGISTRY_URL }}/space-viz:${{ steps.version.outputs.version }}
