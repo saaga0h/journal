@@ -2,6 +2,7 @@ package services
 
 import (
 	"math"
+	"sort"
 	"time"
 
 	"github.com/saaga0h/journal/internal/database"
@@ -317,6 +318,68 @@ func topConcepts(scores map[string]float64, topN int) []string {
 	result := make([]string, topN)
 	for i := 0; i < topN; i++ {
 		result[i] = ranked[i].concept
+	}
+	return result
+}
+
+// TopManifoldEmbeddings returns representative chunk embeddings for the top-N manifolds
+// by proximity score. For each top manifold, up to chunksPerManifold chunk vectors are
+// selected by highest L2 norm (proxy for most semantically loaded). Returns a flat
+// [][]float32 ready to attach to a MinervaQuery.
+func TopManifoldEmbeddings(
+	profile ManifoldProfile,
+	slugChunks []SlugChunks,
+	topN, chunksPerManifold int,
+) [][]float32 {
+	type ranked struct {
+		slug  string
+		score float32
+	}
+	slugsByScore := make([]ranked, 0, len(profile))
+	for slug, score := range profile {
+		slugsByScore = append(slugsByScore, ranked{slug, score})
+	}
+	sort.Slice(slugsByScore, func(i, j int) bool {
+		return slugsByScore[i].score > slugsByScore[j].score
+	})
+
+	chunkIndex := make(map[string][][]float32, len(slugChunks))
+	for _, sc := range slugChunks {
+		chunkIndex[sc.Slug] = sc.Chunks
+	}
+
+	var result [][]float32
+	for i := 0; i < len(slugsByScore) && i < topN; i++ {
+		chunks := chunkIndex[slugsByScore[i].slug]
+		selected := highestNormChunks(chunks, chunksPerManifold)
+		result = append(result, selected...)
+	}
+	return result
+}
+
+// highestNormChunks returns up to n chunks from the slice, selected by highest L2 norm.
+func highestNormChunks(chunks [][]float32, n int) [][]float32 {
+	type normed struct {
+		chunk []float32
+		norm  float64
+	}
+	scored := make([]normed, len(chunks))
+	for i, c := range chunks {
+		var s float64
+		for _, v := range c {
+			s += float64(v) * float64(v)
+		}
+		scored[i] = normed{c, math.Sqrt(s)}
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].norm > scored[j].norm
+	})
+	if n > len(scored) {
+		n = len(scored)
+	}
+	result := make([][]float32, n)
+	for i := 0; i < n; i++ {
+		result[i] = scored[i].chunk
 	}
 	return result
 }

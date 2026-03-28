@@ -68,6 +68,20 @@ type TrendException struct {
 	StandingSimilarity    float32 `json:"standing_similarity"`
 }
 
+// MinervaQuery is published to TopicMinervaQuery by brief-assemble.
+// ManifoldProfile is always populated (human-readable scalar context).
+// TrendEmbeddings and UnexpectedEmbeddings are populated when Ollama is available —
+// Minerva uses these for ANN search when its corpus is embedded.
+type MinervaQuery struct {
+	SessionID            string             `json:"session_id"`
+	ManifoldProfile      map[string]float32 `json:"manifold_profile"`
+	TrendEmbeddings      [][]float32        `json:"trend_embeddings,omitempty"`
+	UnexpectedEmbeddings [][]float32        `json:"unexpected_embeddings,omitempty"`
+	SoulSpeed            float32            `json:"soul_speed"`
+	TopK                 int                `json:"top_k"`
+	ResponseTopic        string             `json:"response_topic"`
+}
+
 // BriefTrigger is published to TopicBriefTrigger to trigger morning brief assembly.
 type BriefTrigger struct{ Envelope }
 

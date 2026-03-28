@@ -16,6 +16,9 @@ type Config struct {
 	WebDAV                  WebDAVConfig   `json:"webdav"`
 	AssociationThreshold    float64        `json:"association_threshold"`
 	BriefRelevanceThreshold float64        `json:"brief_relevance_threshold"`
+	BriefTrendManifolds     int            `json:"brief_trend_manifolds"`
+	BriefTrendChunks        int            `json:"brief_trend_chunks"`
+	BriefUnexpectedVectors  int            `json:"brief_unexpected_vectors"`
 }
 
 type WebDAVConfig struct {
@@ -119,6 +122,9 @@ func Load(configPath string) (*Config, error) {
 
 	config.AssociationThreshold = getEnvFloat("ASSOCIATION_THRESHOLD", 0.3)
 	config.BriefRelevanceThreshold = getEnvFloat("BRIEF_RELEVANCE_THRESHOLD", 0.6)
+	config.BriefTrendManifolds = getEnvInt("BRIEF_TREND_MANIFOLDS", 3)
+	config.BriefTrendChunks = getEnvInt("BRIEF_TREND_CHUNKS", 3)
+	config.BriefUnexpectedVectors = getEnvInt("BRIEF_UNEXPECTED_VECTORS", 5)
 
 	return config, nil
 }

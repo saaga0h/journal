@@ -61,3 +61,30 @@ func ComputeManifoldChunks(
 
 	return result, nil
 }
+
+// EmbedUnexpectedConcepts embeds the top-N concept strings via Ollama and returns
+// the resulting vectors. Concepts that fail to embed are silently skipped.
+// Ollama calls are serialized via mu.
+func EmbedUnexpectedConcepts(
+	concepts []string,
+	topN int,
+	ollama *Ollama,
+	mu *sync.Mutex,
+	log *logrus.Logger,
+) [][]float32 {
+	if topN > len(concepts) {
+		topN = len(concepts)
+	}
+	result := make([][]float32, 0, topN)
+	for i := 0; i < topN; i++ {
+		mu.Lock()
+		emb, err := ollama.Embed(concepts[i])
+		mu.Unlock()
+		if err != nil {
+			log.WithError(err).WithField("concept", concepts[i]).Warn("Failed to embed unexpected concept — skipping")
+			continue
+		}
+		result = append(result, emb)
+	}
+	return result
+}

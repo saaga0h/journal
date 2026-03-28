@@ -194,6 +194,19 @@ func main() {
 			}
 
 			manifoldProfile := services.ManifoldProximityProfile(entries, slugChunks, 0.3, 14.0)
+			soulSpeed := services.ManifoldSoulSpeed(entries, slugChunks, 0.3, 14.0)
+
+			// Compute unexpected concepts and embed them
+			unexpectedConcepts := services.UnexpectedConceptsFromManifold(entries, slugChunks, 0.3, 14.0, cfg.BriefUnexpectedVectors*2)
+
+			trendEmbeddings := services.TopManifoldEmbeddings(manifoldProfile, slugChunks, cfg.BriefTrendManifolds, cfg.BriefTrendChunks)
+			unexpectedEmbeddings := services.EmbedUnexpectedConcepts(unexpectedConcepts, cfg.BriefUnexpectedVectors, ollama, &ollamaMu, log)
+
+			log.WithFields(logrus.Fields{
+				"session_id":           sessionID,
+				"trend_vectors":        len(trendEmbeddings),
+				"unexpected_vectors":   len(unexpectedEmbeddings),
+			}).Info("Brief: embeddings computed — publishing Minerva query")
 
 			// Track session for timeout handling
 			mu.Lock()
@@ -201,16 +214,14 @@ func main() {
 			mu.Unlock()
 
 			// Publish Minerva query
-			query := struct {
-				SessionID       string             `json:"session_id"`
-				ManifoldProfile map[string]float32 `json:"manifold_profile"`
-				TopK            int                `json:"top_k"`
-				ResponseTopic   string             `json:"response_topic"`
-			}{
-				SessionID:       sessionID,
-				ManifoldProfile: map[string]float32(manifoldProfile),
-				TopK:            5,
-				ResponseTopic:   mqttclient.TopicMinervaResponse,
+			query := mqttclient.MinervaQuery{
+				SessionID:            sessionID,
+				ManifoldProfile:      map[string]float32(manifoldProfile),
+				TrendEmbeddings:      trendEmbeddings,
+				UnexpectedEmbeddings: unexpectedEmbeddings,
+				SoulSpeed:            soulSpeed,
+				TopK:                 5,
+				ResponseTopic:        mqttclient.TopicMinervaResponse,
 			}
 
 			if err := client.Publish(mqttclient.TopicMinervaQuery, query); err != nil {
