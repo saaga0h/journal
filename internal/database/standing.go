@@ -162,6 +162,41 @@ func ListCurrentStandingDocuments(pool *pgxpool.Pool) ([]StandingDocument, error
 	return docs, rows.Err()
 }
 
+// StandingDocContent holds slug, title and raw content for manifold chunk computation.
+type StandingDocContent struct {
+	Slug    string
+	Title   string
+	Content string
+}
+
+// GetCurrentStandingContents returns slug, title, and content for all current standing
+// documents. Used for computing manifold chunk embeddings at trend-detect time.
+func GetCurrentStandingContents(pool *pgxpool.Pool) ([]StandingDocContent, error) {
+	ctx := context.Background()
+
+	rows, err := pool.Query(ctx,
+		`SELECT sd.slug, sd.title, sd.content
+		 FROM standing_documents sd
+		 WHERE sd.version = (SELECT MAX(version) FROM standing_documents sd2 WHERE sd2.slug = sd.slug)
+		 ORDER BY sd.slug`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get standing document contents: %w", err)
+	}
+	defer rows.Close()
+
+	var docs []StandingDocContent
+	for rows.Next() {
+		var d StandingDocContent
+		if err := rows.Scan(&d.Slug, &d.Title, &d.Content); err != nil {
+			return nil, fmt.Errorf("failed to scan standing doc content: %w", err)
+		}
+		docs = append(docs, d)
+	}
+
+	return docs, rows.Err()
+}
+
 // GetAllCurrentEmbeddings returns slug and embedding for all current standing documents.
 // Used for computing entry-standing associations.
 func GetAllCurrentEmbeddings(pool *pgxpool.Pool) ([]StandingDocumentEmbedding, error) {

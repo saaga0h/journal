@@ -455,7 +455,7 @@ func GetRecentEntriesInStandingSpace(pool *pgxpool.Pool, windowDays int) ([]Entr
 }
 
 // ManifoldEntryPoint is a lightweight entry struct carrying only what the manifold
-// visualization needs: identity, metadata for tooltips, and the raw 768-dim embedding.
+// computation needs: identity, metadata, and the raw 4096-dim embedding.
 type ManifoldEntryPoint struct {
 	EntryID        int64
 	Source         string
@@ -465,8 +465,8 @@ type ManifoldEntryPoint struct {
 }
 
 // GetRecentEntryEmbeddings returns entries with non-null embeddings within the lookback
-// window. Only fetches the columns needed for manifold projection (no engineering,
-// theoretical, git_input, raw_output).
+// window, filtered by since_timestamp (content date, not ingestion time).
+// Only fetches the columns needed for manifold projection.
 func GetRecentEntryEmbeddings(pool *pgxpool.Pool, windowDays int) ([]ManifoldEntryPoint, error) {
 	ctx := context.Background()
 	since := time.Now().AddDate(0, 0, -windowDays)
@@ -475,7 +475,8 @@ func GetRecentEntryEmbeddings(pool *pgxpool.Pool, windowDays int) ([]ManifoldEnt
 		`SELECT id, source, since_timestamp, concepts, embedding
 		 FROM journal_entries
 		 WHERE embedding IS NOT NULL
-		   AND created_at >= $1
+		   AND since_timestamp >= $1
+		   AND since_timestamp IS NOT NULL
 		 ORDER BY since_timestamp DESC`,
 		since,
 	)

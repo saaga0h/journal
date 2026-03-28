@@ -11,6 +11,16 @@ import (
 // GravityProfile maps standing_slug -> GLF-weighted mean similarity score.
 type GravityProfile map[string]float32
 
+// ManifoldProfile maps standing_slug -> GLF+soul-speed-weighted mean proximity [0,1].
+// Proximity = 1 - nearest_chunk_dist. Higher = entry semantics closer to that manifold.
+type ManifoldProfile map[string]float32
+
+// SlugChunks holds precomputed chunk embeddings for one standing doc.
+type SlugChunks struct {
+	Slug   string
+	Chunks [][]float32
+}
+
 // SoulSpeedSlug is the standing document slug treated as a perpendicular axis.
 const SoulSpeedSlug = "soul-speed"
 
@@ -102,6 +112,131 @@ func ManifoldSpread(entries []database.ManifoldEntryPoint, chunkEmbeddings [][]f
 		total += float64(NearestChunkDistance(e.Embedding.Slice(), chunkEmbeddings))
 	}
 	return float32(total / float64(len(entries)))
+}
+
+// ManifoldProximityProfile computes GLF+soul-speed-weighted mean proximity for each lateral
+// standing doc manifold. Soul-speed similarity acts as a weight modifier: entries with higher
+// soul-speed proximity contribute more strongly to each manifold's gravity.
+//
+// entries: recent entries with raw embeddings (from database.GetRecentEntryEmbeddings)
+// slugChunks: per-slug chunk embeddings (computed via ComputeManifoldChunks)
+// k, midpointDays: GLF recency parameters
+func ManifoldProximityProfile(
+	entries []database.ManifoldEntryPoint,
+	slugChunks []SlugChunks,
+	k, midpointDays float64,
+) ManifoldProfile {
+	now := time.Now()
+	profile := make(ManifoldProfile, len(slugChunks))
+
+	for _, sc := range slugChunks {
+		if sc.Slug == SoulSpeedSlug || len(sc.Chunks) == 0 {
+			continue
+		}
+		var weightedSum, totalWeight float64
+		for _, e := range entries {
+			ageDays := now.Sub(e.SinceTimestamp).Hours() / 24.0
+			glfW := GLFWeight(ageDays, k, midpointDays)
+			ssW := float64(soulSpeedSimilarity(e, slugChunks))
+			// soul-speed in [0.5, 1.0] — never zero-weights an entry
+			weight := glfW * (0.5 + 0.5*ssW)
+			proximity := 1.0 - float64(NearestChunkDistance(e.Embedding.Slice(), sc.Chunks))
+			weightedSum += proximity * weight
+			totalWeight += weight
+		}
+		if totalWeight > 0 {
+			profile[sc.Slug] = float32(weightedSum / totalWeight)
+		}
+	}
+	return profile
+}
+
+// ManifoldSoulSpeed returns the GLF-weighted mean proximity to the soul-speed manifold.
+// Replaces SoulSpeedProfile (which used association similarity, not manifold geometry).
+func ManifoldSoulSpeed(
+	entries []database.ManifoldEntryPoint,
+	slugChunks []SlugChunks,
+	k, midpointDays float64,
+) float32 {
+	now := time.Now()
+	var weightedSum, totalWeight float64
+	for _, sc := range slugChunks {
+		if sc.Slug != SoulSpeedSlug || len(sc.Chunks) == 0 {
+			continue
+		}
+		for _, e := range entries {
+			ageDays := now.Sub(e.SinceTimestamp).Hours() / 24.0
+			w := GLFWeight(ageDays, k, midpointDays)
+			proximity := 1.0 - float64(NearestChunkDistance(e.Embedding.Slice(), sc.Chunks))
+			weightedSum += proximity * w
+			totalWeight += w
+		}
+		break
+	}
+	if totalWeight == 0 {
+		return 0
+	}
+	return float32(weightedSum / totalWeight)
+}
+
+// soulSpeedSimilarity returns the entry's proximity to the soul-speed manifold [0,1].
+// Returns 0 if no soul-speed slug chunks are available.
+func soulSpeedSimilarity(e database.ManifoldEntryPoint, slugChunks []SlugChunks) float32 {
+	for _, sc := range slugChunks {
+		if sc.Slug == SoulSpeedSlug && len(sc.Chunks) > 0 {
+			return 1.0 - NearestChunkDistance(e.Embedding.Slice(), sc.Chunks)
+		}
+	}
+	return 0
+}
+
+// UnexpectedConceptsFromManifold returns the top N concepts from entries that have the
+// lowest maximum proximity across all manifolds — entries that don't strongly belong to any
+// known standing doc territory. These represent potential phase transitions or emergent thinking.
+// GLF+soul-speed weighting is applied so recent, alive entries surface first.
+func UnexpectedConceptsFromManifold(
+	entries []database.ManifoldEntryPoint,
+	slugChunks []SlugChunks,
+	k, midpointDays float64,
+	topN int,
+) []string {
+	now := time.Now()
+
+	// Lateral chunks only (exclude soul-speed — it's a modifier, not a territory)
+	var lateral []SlugChunks
+	for _, sc := range slugChunks {
+		if sc.Slug != SoulSpeedSlug && len(sc.Chunks) > 0 {
+			lateral = append(lateral, sc)
+		}
+	}
+	if len(lateral) == 0 {
+		return nil
+	}
+
+	scores := make(map[string]float64)
+	for _, e := range entries {
+		// Max proximity to any manifold: low = entry doesn't fit anywhere
+		var maxProx float64
+		for _, sc := range lateral {
+			p := 1.0 - float64(NearestChunkDistance(e.Embedding.Slice(), sc.Chunks))
+			if p > maxProx {
+				maxProx = p
+			}
+		}
+		// Invert: high score = far from all manifolds
+		unexpectedness := 1.0 - maxProx
+
+		ageDays := now.Sub(e.SinceTimestamp).Hours() / 24.0
+		glfW := GLFWeight(ageDays, k, midpointDays)
+		ssW := float64(soulSpeedSimilarity(e, slugChunks))
+		weight := glfW * (0.5 + 0.5*ssW)
+
+		for _, concept := range e.Concepts {
+			scores[concept] += unexpectedness * weight
+		}
+	}
+
+	return topConcepts(scores, topN)
 }
 
 // TrendingConcepts returns the top N concepts by GLF-weighted frequency across entries.

@@ -65,6 +65,10 @@ func main() {
 
 	threshold := float32(cfg.BriefRelevanceThreshold)
 
+	ollama := services.NewOllama(cfg.Ollama)
+	ollama.SetLogger(log)
+	var ollamaMu sync.Mutex
+
 	// pendingSessions tracks active brief sessions awaiting Minerva response.
 	// key = session_id, value = trigger time
 	var mu sync.Mutex
@@ -158,34 +162,38 @@ func main() {
 			triggerTime := time.Now()
 			sessionID := fmt.Sprintf("%x", triggerTime.UnixNano())
 
-			log.WithField("session_id", sessionID).Info("Brief trigger received — computing trend")
+			log.WithField("session_id", sessionID).Info("Brief trigger received — computing manifold profile")
 
-			// Compute standing-space gravity profile
-			points, err := database.GetRecentEntriesInStandingSpace(pool, *windowDays)
+			// Fetch recent entries with raw embeddings
+			entries, err := database.GetRecentEntryEmbeddings(pool, *windowDays)
 			if err != nil {
-				log.WithError(err).Error("Failed to fetch entries in standing space")
+				log.WithError(err).Error("Failed to fetch entry embeddings")
 				publishSilence(client, log, sessionID, triggerTime, "trend_error")
 				return
 			}
 
-			if len(points) < 3 {
-				log.WithField("entry_count", len(points)).Info("Brief: silence — insufficient trend data")
+			if len(entries) < 3 {
+				log.WithField("entry_count", len(entries)).Info("Brief: silence — insufficient trend data")
 				publishSilence(client, log, sessionID, triggerTime, "insufficient_trend_data")
 				return
 			}
 
-			slugSet := make(map[string]bool)
-			for _, pt := range points {
-				for slug := range pt.Coords {
-					slugSet[slug] = true
-				}
-			}
-			allSlugs := make([]string, 0, len(slugSet))
-			for s := range slugSet {
-				allSlugs = append(allSlugs, s)
+			// Fetch standing doc contents and compute manifold chunk embeddings
+			docs, err := database.GetCurrentStandingContents(pool)
+			if err != nil {
+				log.WithError(err).Error("Failed to fetch standing doc contents")
+				publishSilence(client, log, sessionID, triggerTime, "trend_error")
+				return
 			}
 
-			gravity := services.GLFWeightedGravityProfile(points, allSlugs, 0.3, 14.0)
+			slugChunks, err := services.ComputeManifoldChunks(docs, ollama, &ollamaMu, log)
+			if err != nil {
+				log.WithError(err).Error("Failed to compute manifold chunks")
+				publishSilence(client, log, sessionID, triggerTime, "trend_error")
+				return
+			}
+
+			manifoldProfile := services.ManifoldProximityProfile(entries, slugChunks, 0.3, 14.0)
 
 			// Track session for timeout handling
 			mu.Lock()
@@ -194,15 +202,15 @@ func main() {
 
 			// Publish Minerva query
 			query := struct {
-				SessionID      string             `json:"session_id"`
-				GravityProfile map[string]float32 `json:"gravity_profile"`
-				TopK           int                `json:"top_k"`
-				ResponseTopic  string             `json:"response_topic"`
+				SessionID       string             `json:"session_id"`
+				ManifoldProfile map[string]float32 `json:"manifold_profile"`
+				TopK            int                `json:"top_k"`
+				ResponseTopic   string             `json:"response_topic"`
 			}{
-				SessionID:      sessionID,
-				GravityProfile: map[string]float32(gravity),
-				TopK:           5,
-				ResponseTopic:  mqttclient.TopicMinervaResponse,
+				SessionID:       sessionID,
+				ManifoldProfile: map[string]float32(manifoldProfile),
+				TopK:            5,
+				ResponseTopic:   mqttclient.TopicMinervaResponse,
 			}
 
 			if err := client.Publish(mqttclient.TopicMinervaQuery, query); err != nil {

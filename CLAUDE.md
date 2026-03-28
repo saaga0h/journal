@@ -32,6 +32,7 @@ make mqtt-sub           # Watch journal/# MQTT traffic
 - **`GetAllCurrentEmbeddings` and `GetRecentEntriesWithEmbeddings` must NOT be removed** — used by `entry-ingest` and `reembed` respectively. Not referenced by `trend-detect` or `brief-assemble` anymore but still needed.
 - **`SoulSpeedSlug = "soul-speed"` constant** in `internal/services/space.go` must match the actual standing doc slug. If that doc is renamed, update the constant.
 - **`brief-assemble` always times out** until Minerva implements `minerva/query/brief`. Expected behavior — not a bug.
+- **`journal/trend/current` wire format** — `TrendResult` publishes `manifold_profile` (slug → proximity [0,1]), not `gravity_profile`. `cluster_spread` field no longer exists. Any consumer (e.g. Minerva) built against the old format must be updated.
 - **Concept extractor produces per-day entries** — one entry per calendar day with commits. `since_timestamp`/`until_timestamp` are the commit day boundaries, not extraction time.
 - **`ASSOCIATION_THRESHOLD`** (default 0.3) and **`BRIEF_RELEVANCE_THRESHOLD`** (default 0.6) need calibration with real data. Start high on brief threshold.
 - **Spread/Soul Speed labels are guesses** — thresholds in `buildHumanSummary` and `soulSpeedLabel` in `cmd/trend-detect/main.go` are empirical starting points.

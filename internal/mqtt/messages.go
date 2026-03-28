@@ -46,19 +46,17 @@ type ConceptCreated struct {
 	Project string `json:"project"`
 }
 
-// TrendResult is published by trend-detect after computing the gravity profile
-// in standing-document space.
+// TrendResult is published by trend-detect after computing the manifold proximity profile.
 type TrendResult struct {
 	Envelope
-	GravityProfile     map[string]float32 `json:"gravity_profile"`     // slug -> weighted mean similarity
-	SoulSpeed          float32            `json:"soul_speed"`           // Soul Speed axis score
-	ClusterSpread      float32            `json:"cluster_spread"`       // tightness of the cluster
-	TrendingConcepts   []string           `json:"trending_concepts"`    // top GLF-weighted concepts by frequency
-	UnexpectedConcepts []string           `json:"unexpected_concepts"`  // concepts from spatially distant entries
+	ManifoldProfile    map[string]float32 `json:"manifold_profile"`     // slug -> GLF+soul-speed-weighted mean proximity [0,1]
+	SoulSpeed          float32            `json:"soul_speed"`            // GLF-weighted proximity to soul-speed manifold
+	TrendingConcepts   []string           `json:"trending_concepts"`     // top GLF-weighted concepts by frequency
+	UnexpectedConcepts []string           `json:"unexpected_concepts"`   // concepts from entries distant from all manifolds
 	EntryCount         int                `json:"entry_count"`
 	WindowDays         int                `json:"window_days"`
 	ComputedAt         time.Time          `json:"computed_at"`
-	HumanSummary       string             `json:"human_summary"` // pre-rendered readable description
+	HumanSummary       string             `json:"human_summary"`         // pre-rendered readable description
 }
 
 // TrendException captures a candidate phase-transition signal.

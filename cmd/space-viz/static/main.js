@@ -639,11 +639,14 @@ function renderFieldScalar() {
     const distToPull = Math.hypot(dx, dy, dz) || 1;
     const nx = dx/distToPull, ny = dy/distToPull, nz = dz/distToPull;
 
-    // Vector length = ss × nearest-chunk distance × scale
-    // chunkDist ∈ [0,1]: 0 = entry sits on manifold, 1 = completely unrelated
-    // Entries close to manifold get short vectors even at high SS; far entries get long vectors
+    // Vector length = proximity × soul-speed-modifier × scale
+    // proximity ∈ [0,1]: 1 = on manifold, 0 = unrelated
+    // ssWeight ∈ [0.5,1.0]: soul-speed amplifies pull, never zeros it out
+    // Long arrow = close to manifold + alive; short = far or dormant
     const chunkDist = e.nearest_chunk_dist ?? 1.0;
-    const d = ss * chunkDist * 5.0;
+    const proximity = 1.0 - chunkDist;
+    const ssWeight = 0.5 + 0.5 * ss;
+    const d = proximity * ssWeight * 5.0;
     const tx = e.position.x + nx * d;
     const ty = e.position.y + ny * d;
     const tz = e.position.z + nz * d;
