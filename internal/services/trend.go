@@ -54,27 +54,3 @@ func WeightedCentroid(embeddings [][]float32, weights []float64) ([]float32, err
 
 	return result, nil
 }
-
-// CosineSimilarity computes the cosine similarity between two vectors.
-// Returns 0 if either vector has zero magnitude.
-func CosineSimilarity(a, b []float32) float32 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-
-	var dot, magA, magB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		magA += float64(a[i]) * float64(a[i])
-		magB += float64(b[i]) * float64(b[i])
-	}
-
-	magA = math.Sqrt(magA)
-	magB = math.Sqrt(magB)
-
-	if magA == 0 || magB == 0 {
-		return 0
-	}
-
-	return float32(dot / (magA * magB))
-}

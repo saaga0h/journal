@@ -52,9 +52,9 @@ func NearestChunkDistance(entryEmbedding []float32, chunks [][]float32) float32 
 	return 1.0 - maxSim
 }
 
-// cosineSimilarity computes the cosine similarity between two vectors.
-// Returns 0 if either vector has zero magnitude.
-func cosineSimilarity(a, b []float32) float32 {
+// CosineSimilarity computes the cosine similarity between two vectors.
+// Returns 0 if either vector has zero magnitude or lengths differ.
+func CosineSimilarity(a, b []float32) float32 {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0
 	}
@@ -73,3 +73,6 @@ func cosineSimilarity(a, b []float32) float32 {
 
 	return float32(dot / denom)
 }
+
+// cosineSimilarity delegates to the exported CosineSimilarity for internal callers.
+func cosineSimilarity(a, b []float32) float32 { return CosineSimilarity(a, b) }
