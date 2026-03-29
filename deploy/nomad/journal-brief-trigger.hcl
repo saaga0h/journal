@@ -21,9 +21,9 @@ job "journal-brief-trigger" {
 
 
   periodic {
-    crons            = ["0 7 * * *"]
+    crons            = ["15 7 * * *"]
     prohibit_overlap = true
-    time_zone        = "UTC"
+    time_zone        = "Europe/Helsinki"
   }
 
   group "trigger" {
