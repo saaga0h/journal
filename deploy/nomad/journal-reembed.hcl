@@ -13,7 +13,7 @@ job "journal-reembed" {
   type        = "batch"
 
   meta {
-    artifact_base = "${ARTIFACT_BASE}"
+    artifact_base = "http://192.168.10.50:8080/api/binaries/journal"
   }
 
   constraint {
