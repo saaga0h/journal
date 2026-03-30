@@ -6,6 +6,13 @@ Persistent journal system for capturing thinking in motion. Automatically extrac
 
 MQTT-native, Postgres-backed with pgvector, built in Go.
 
+## Intellectual Property
+
+The mechanisms described in this repository — including the Soul Speed scalar field, manifold-based proximity computation, and GLF-weighted gravity profiles — are original to this project. Prior art documentation is maintained in this repository:
+
+- **[CONCEPTS.md](CONCEPTS.md)** — the ideas: core abstractions, novel mechanisms, design decisions, and the mathematical specificity of each
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — the structure: components, data flows, wire formats, algorithms, and invariants
+
 ## Prerequisites
 
 - Go 1.21+
