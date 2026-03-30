@@ -8,7 +8,7 @@ MQTT-native, Postgres-backed with pgvector, built in Go.
 
 ## Intellectual Property
 
-The mechanisms described in this repository — including the Soul Speed scalar field, manifold-based proximity computation, and GLF-weighted gravity profiles — are original to this project. Prior art documentation is maintained in this repository:
+These ideas are offered freely. The mechanisms described here — Soul Speed scalar field, manifold-based proximity computation, GLF-weighted gravity profiles — are documented in detail so that anyone can understand, use, modify, and build on them without encumbrance. This documentation exists as a public record to ensure no party can retrospectively claim these ideas as proprietary.
 
 - **[CONCEPTS.md](CONCEPTS.md)** — the ideas: core abstractions, novel mechanisms, design decisions, and the mathematical specificity of each
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — the structure: components, data flows, wire formats, algorithms, and invariants
