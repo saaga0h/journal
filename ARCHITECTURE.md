@@ -171,19 +171,8 @@ sequenceDiagram
     end
     BA->>MQTT: publish MinervaQuery (minerva/query/brief)
     MQTT->>Minerva: MinervaQuery
-
-    alt response within 30s
-        Minerva->>MQTT: MinervaResponse (journal/brief/minerva-response)
-        MQTT->>BA: MinervaResponse
-        BA->>BA: score >= BRIEF_RELEVANCE_THRESHOLD?
-        alt score sufficient
-            BA->>BA: surface article
-        else score too low
-            BA->>BA: silence
-        end
-    else timeout
-        BA->>BA: silence
-    end
+    note over Minerva: not yet implemented
+    BA->>BA: timeout → silence
     BA->>DB: InsertBriefHistory
 ```
 
@@ -488,7 +477,7 @@ Silence is a valid outcome and is recorded in `brief_history`.
 
 ## 10. Minerva Integration Protocol
 
-Minerva is an external system responsible for article recommendation. Journal defines one side of the protocol; Minerva must implement the other.
+Minerva is an external system responsible for article recommendation. Journal defines one side of the protocol; the Minerva side is not yet implemented. Until it is, `brief-assemble` will produce silence on every run — this is expected behavior, not a bug.
 
 ### Query (Journal → Minerva)
 
@@ -557,11 +546,11 @@ make test           # go test ./...
 
 ### Production (Nomad)
 
-- **Nomad**: `http://192.168.10.42:4646`
-- **Vault**: `https://192.168.10.42:8200`
-- **Artifact server**: `http://192.168.10.50:8080/api/binaries/journal/<arch>/<binary>`
-- **DC**: `the-collective` (GPU nodes excluded)
-- **Secrets**: `vault kv get secret/nomad/journal`
+- **Nomad**: `http://nomad.service:4646`
+- **Vault**: `https://vault.service:8200`
+- **Artifact server**: `http://artifacts.service:8080/api/binaries/journal/<arch>/<binary>`
+- **DC**: `data-center` (GPU nodes excluded)
+- **Secrets**: `vault kv get ...`
 
 Job definitions: `deploy/nomad/`
 
@@ -613,10 +602,6 @@ Three thresholds are empirical starting points:
 - Soul Speed labels (0.45 / 0.55 / 0.65)
 
 All three require calibration against a sufficiently large real corpus. The current values are reasonable starting points but not validated.
-
-### `brief-assemble` Always Times Out (Current State)
-
-`brief-assemble` times out on every run until Minerva implements `minerva/query/brief`. This is expected behavior, not a bug. The silence is recorded in `brief_history`.
 
 ### GravityProfile Is a Legacy Computation
 
