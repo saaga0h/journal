@@ -1,10 +1,10 @@
 module github.com/saaga0h/journal
 
-go 1.24.4
+go 1.25.0
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/joho/godotenv v1.5.1
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/sirupsen/logrus v1.9.4
