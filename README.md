@@ -27,6 +27,11 @@ ollama pull qwen3-embedding:8b
 ## Setup
 
 ```bash
+# 0. Add hooks directory 
+git config core.hooksPath .githooks
+```
+
+```bash
 # 1. Install Go dependencies
 make deps
 
