@@ -28,11 +28,20 @@ jobs:
         ls -lh build/amd64/
         file build/amd64/space-viz
 
+    - name: Configure Buildx for Harbor
+      run: |
+        mkdir -p /etc/buildkit
+        cat > /etc/buildkit/buildkitd.toml << 'EOF'
+        [registry."harbor.home.federation.fi"]
+          http = true
+          insecure = true
+        EOF
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
       with:
         config: /etc/buildkit/buildkitd.toml
-        
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
