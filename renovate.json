@@ -17,13 +17,17 @@
       "dependencyDashboardApproval": true
     },
     {
-      "matchPackagePrefixes": ["golang.org/x/"],
       "groupName": "golang.org/x packages",
-      "groupSlug": "golang-x"
+      "groupSlug": "golang-x",
+      "matchPackageNames": [
+        "golang.org/x/{/,}**"
+      ]
     },
     {
-      "matchPackagePrefixes": ["github.com/jackc/"],
-      "groupName": "jackc packages"
+      "groupName": "jackc packages",
+      "matchPackageNames": [
+        "github.com/jackc/{/,}**"
+      ]
     }
   ],
   "prConcurrentLimit": 5,
