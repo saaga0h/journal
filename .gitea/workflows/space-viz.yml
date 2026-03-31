@@ -29,10 +29,13 @@ jobs:
         file build/amd64/space-viz
 
     - name: Login to Harbor
+      env:
+        REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+        REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
       run: |
-        echo "${{ secrets.REGISTRY_PASSWORD }}" | \
+        echo "$REGISTRY_PASSWORD" | \
           docker login harbor.home.federation.fi \
-          -u "${{ secrets.REGISTRY_USERNAME }}" \
+          -u "$REGISTRY_USERNAME" \
           --password-stdin
 
     - name: Build and push Docker image
