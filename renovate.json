@@ -15,9 +15,18 @@
     {
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
+    },
+    {
+      "matchPackagePrefixes": ["golang.org/x/"],
+      "groupName": "golang.org/x packages",
+      "groupSlug": "golang-x"
+    },
+    {
+      "matchPackagePrefixes": ["github.com/jackc/"],
+      "groupName": "jackc packages"
     }
   ],
-  "prConcurrentLimit": 3,
+  "prConcurrentLimit": 5,
   "gomod": {
     "enabled": true
   }
