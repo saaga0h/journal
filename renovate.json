@@ -1,19 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "packageRules": [
+    {
+      "matchCategories": [
+        "golang"
+      ],
+      "enabled": true
+    },
+    {
+      "matchCategories": ["docker"],
+      "pinDigests": true
+    },
     {
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
     }
   ],
   "prConcurrentLimit": 3,
-  "docker": {
-    "pinDigests": true
-  },
-    "golang": {
-    "enabled": true
-  },
   "gomod": {
     "enabled": true
   }
