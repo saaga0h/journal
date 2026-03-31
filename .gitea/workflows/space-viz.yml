@@ -28,34 +28,22 @@ jobs:
         ls -lh build/amd64/
         file build/amd64/space-viz
 
-    - name: Configure Buildx for Harbor
+    - name: Login to Harbor
       run: |
-        mkdir -p /etc/buildkit
-        cat > /etc/buildkit/buildkitd.toml << 'EOF'
-        [registry."harbor.home.federation.fi"]
-          http = true
-          insecure = true
-        EOF
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-      with:
-        config: /etc/buildkit/buildkitd.toml
+        echo "${{ secrets.REGISTRY_PASSWORD }}" | \
+          docker login harbor.home.federation.fi \
+          -u "${{ secrets.REGISTRY_USERNAME }}" \
+          --password-stdin
 
     - name: Build and push Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: build/amd64
-        file: cmd/space-viz/Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.REGISTRY_URL }}/space-viz:${{ steps.version.outputs.version }}
-          ${{ secrets.REGISTRY_URL }}/space-viz:latest
-        registry: ${{ secrets.REGISTRY_HOST }}
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      run: |
+        docker build \
+          -t ${{ secrets.REGISTRY_URL }}/space-viz:${{ steps.version.outputs.version }} \
+          -t ${{ secrets.REGISTRY_URL }}/space-viz:latest \
+          -f cmd/space-viz/Dockerfile \
+          build/amd64
+        docker push ${{ secrets.REGISTRY_URL }}/space-viz:${{ steps.version.outputs.version }}
+        docker push ${{ secrets.REGISTRY_URL }}/space-viz:latest
 
     - name: Deploy to production
       env:
