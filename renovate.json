@@ -4,23 +4,31 @@
   "packageRules": [
     {
       "matchCategories": [
-        "golang"
+"docker"
       ],
-      "enabled": true
-    },
-    {
-      "matchCategories": ["docker"],
       "pinDigests": true
     },
     {
-      "matchUpdateTypes": ["major"],
+      "matchCategories": ["golang"],
+      "enabled": true
+    },
+    {
+      "matchCategories": [
+        "docker"
+      ],
+      "pinDigests": true
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
       "dependencyDashboardApproval": true
     },
     {
       "groupName": "golang.org/x packages",
       "groupSlug": "golang-x",
       "matchPackageNames": [
-        "golang.org/x/{/,}**"
+"golang.org/x/{/,}**"
       ]
     },
     {
@@ -31,40 +39,46 @@
     },
     {
       "matchUpdateTypes": ["patch"],
-      "matchPackagePatterns": ["*"],
       "automerge": true,
       "automergeType": "pr",
-      "platformAutomerge": true
+      "platformAutomerge": true,
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
       "matchUpdateTypes": ["minor"],
-      "matchPackagePatterns": ["*"],
       "minimumReleaseAge": "5 days",
       "automerge": true,
       "automergeType": "pr",
-      "platformAutomerge": true
+      "platformAutomerge": true,
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false,
       "dependencyDashboardApproval": true
     },
     {
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
       "automerge": false
     },
     {
-      "matchPackagePrefixes": ["golang.org/x/"],
       "groupName": "golang.org/x packages",
       "automerge": true,
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "3 days",
+      "matchPackageNames": ["golang.org/x/{/,}**"]
     }
   ],
   "prConcurrentLimit": 5,
   "gomod": {
     "enabled": true
-  },
-  "docker": {
-    "pinDigests": true
   }
 }
