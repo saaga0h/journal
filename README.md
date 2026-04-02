@@ -6,9 +6,22 @@ Persistent journal system for capturing thinking in motion. Automatically extrac
 
 MQTT-native, Postgres-backed with pgvector, built in Go.
 
-## Intellectual Property
+## The Space
 
-These ideas are offered freely. The mechanisms described here — Soul Speed scalar field, manifold-based proximity computation, GLF-weighted gravity profiles — are documented in detail so that anyone can understand, use, modify, and build on them without encumbrance. This documentation exists as a public record to ensure no party can retrospectively claim these ideas as proprietary.
+*Journal entries as points in semantic space — 270 days, colored by source.
+Each point is a day of engineering work. The clusters are real.*
+
+![Journal space — UMAP projection of entries in standing-document space](docs/images/journal-space.jpg)
+
+## The Manifold
+
+*Physics as Translation Layer: 47 chunks, 35 entries, 173 faces, 2 islands.
+A standing document is not a point — it is a surface. Entries are pulled toward it
+by nearest-chunk proximity, not centroid distance.*
+
+![Manifold view — Physics as Translation Layer with scalar field applied](docs/images/journal-manifold.jpg)
+
+## Documents
 
 - **[CONCEPTS.md](CONCEPTS.md)** — the ideas: core abstractions, novel mechanisms, design decisions, and the mathematical specificity of each
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — the structure: components, data flows, wire formats, algorithms, and invariants
@@ -245,3 +258,7 @@ make run-ingest-webdav-entries    # Ingest freeform entries from WebDAV
 ```
 
 Both ingestors skip unchanged files on repeat runs, making them safe to schedule. `sync-standing` treats WebDAV as source of truth — ingest then reassociate in one step.
+
+---
+
+*These ideas are offered freely. The mechanisms described here — Soul Speed scalar field, manifold-based proximity computation, GLF-weighted gravity profiles — are documented in detail so that anyone can understand, use, modify, and build on them without encumbrance. This documentation exists as a public record to ensure no party can retrospectively claim these ideas as proprietary.*
